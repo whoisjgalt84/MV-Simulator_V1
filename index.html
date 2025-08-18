@@ -23,12 +23,12 @@
   .btn{ appearance:none; border:1px solid rgba(255,255,255,.12); background:var(--panel2); color:var(--ink); padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow:var(--shadow); }
   .btn.primary{ background: linear-gradient(180deg, var(--brand), var(--brand2)); border-color:transparent; color:white }
   .toolbar .btn{ font-weight:600 }
-  main{ max-width:1200px; margin:0 auto; padding:12px 16px; display:grid; grid-template-columns: 220px 1fr; gap:12px }
-  @media (max-width: 900px){ main{ grid-template-columns: 1fr } }
+  main{ max-width:1200px; margin:0 auto; padding:12px 16px; display:grid; grid-template-columns: 260px 1fr; gap:12px }
+  @media (max-width: 980px){ main{ grid-template-columns: 1fr } }
   aside{ background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:var(--rad); padding:12px; position:sticky; top:78px; height:fit-content }
   aside h3{ margin:6px 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:1.1px }
   aside .group{ display:grid; gap:8px; margin-bottom:10px }
-  .pair{ display:grid; grid-template-columns: 1fr 110px; gap:8px; align-items:center }
+  .pair{ display:grid; grid-template-columns: 1fr 120px; gap:8px; align-items:center }
   .pair label{ font-size:12px; color:var(--muted) }
   .pair input[type="range"]{ width:100% }
 
@@ -38,7 +38,7 @@
   .card .body{ padding:10px 12px }
 
   /* Top ribbon table */
-  .grid{ display:grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); gap:8px; }
+  .grid{ display:grid; grid-template-columns: repeat(8, minmax(130px, 1fr)); gap:8px; }
   .stat{ background:var(--panel2); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:8px 10px }
   .stat .k{ font-size:11px; color:var(--muted) }
   .stat .v{ font-weight:800; font-size:18px }
@@ -46,15 +46,25 @@
 
   /* Waveforms */
   #waveWrap{ background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:var(--rad); padding:8px }
-  .wave{ display:grid; grid-template-columns: 60px 1fr; align-items:center; gap:8px; padding:6px 0 }
-  .yaxis{ color:var(--muted); font-size:12px }
+  .wave{ display:grid; grid-template-columns: 60px 1fr; align-items:center; gap:8px; padding:6px 0; position:relative }
+  .yaxis{ color:var(--muted); font-size:12px; text-align:right; padding-right:4px }
   canvas{ width:100%; height:120px; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)); border-radius:8px }
+  .xlabels{ position:absolute; left:60px; right:0; bottom:2px; display:flex; justify-content:space-between; font-size:11px; color:var(--muted); pointer-events:none }
 
-  /* Bottom settings */
-  .settings{ display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px }
-  .setting{ background:var(--panel2); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:8px 10px; display:grid; gap:6px }
-  .setting label{ font-size:12px; color:var(--muted) }
-  .setting .row{ justify-content:space-between }
+  /* Control surface with buttons + rotary knob */
+  .controlsWrap{ display:grid; grid-template-columns: 1fr 140px; gap:12px; align-items:stretch }
+  .btnGrid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:8px }
+  .paramBtn{ border:1px solid rgba(255,255,255,.12); background:var(--panel2); border-radius:12px; padding:10px; text-align:left; cursor:pointer; display:grid; gap:4px }
+  .paramBtn .lbl{ font-size:12px; color:var(--muted) }
+  .paramBtn .val{ font-weight:800; font-size:18px }
+  .paramBtn.active{ outline: 2px solid var(--brand); border-color: transparent; }
+  .dial{ background:var(--panel2); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:10px; display:grid; gap:10px; justify-items:center }
+  .knob{ width:110px; height:110px; border-radius:999px; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.15), rgba(255,255,255,.02)); display:grid; place-items:center; position:relative; box-shadow: inset 0 6px 18px rgba(0,0,0,.35); }
+  .knob::after{ content:""; width:6px; height:24px; background: var(--brand2); border-radius:3px; position:absolute; top:10px; left:50%; transform: translateX(-50%); box-shadow: 0 0 10px rgba(0,0,0,.4); }
+  .dial .readout{ font-weight:800; font-size:18px }
+  .dial .hint{ font-size:11px; color:var(--muted) }
+  .dial .row{ display:flex; gap:8px }
+  .dial button{ padding:8px 10px }
 
   footer{ text-align:center; color:var(--muted); font-size:12px; padding:20px 10px 40px }
 
@@ -90,6 +100,7 @@
       </label>
       <button class="btn" id="themeBtn" title="Toggle theme">Theme</button>
       <button class="btn" id="resetBtn" title="Reset">Reset</button>
+      <button class="btn" id="holdBtn" title="Inspiratory Hold / Plateau">Hold</button>
       <button class="btn primary" id="helpBtn" title="Help">Help</button>
     </div>
   </div>
@@ -110,12 +121,16 @@
         <input id="C_r" type="range" min="0.000" max="0.200" step="0.001" value="0.060" oninput="C.value=this.value">
         <div class="pair"><label>Resistance (cmH<sub>2</sub>O/L/s)</label><input id="R" type="number" min="0" max="100" step="0.1" value="10"></div>
         <input id="R_r" type="range" min="0" max="60" step="0.5" value="10" oninput="R.value=this.value">
+        <div class="pair"><label>Leak (L/min)</label><input id="Leak" type="number" min="0" max="30" step="0.5" value="0"></div>
+        <input id="Leak_r" type="range" min="0" max="30" step="0.5" value="0" oninput="Leak.value=this.value">
       </div>
     </details>
 
     <details>
       <summary>Effort Model</summary>
       <div class="group" style="margin-top:8px">
+        <div class="pair"><label>Patient Frequency</label><input id="effF" type="number" min="0" max="40" step="1" value="12"></div>
+        <input id="effF_r" type="range" min="0" max="40" step="1" value="12" oninput="effF.value=this.value">
         <div class="pair"><label>Delay Before Effort (s)</label><input id="effDelay" type="number" min="0" max="5" step="0.05" value="0.15"></div>
         <input id="effDelay_r" type="range" min="0" max="5" step="0.05" value="0.15" oninput="effDelay.value=this.value">
         <div class="pair"><label>Duration of Effort (s)</label><input id="effDur" type="number" min="0" max="5" step="0.05" value="1.0"></div>
@@ -131,25 +146,26 @@
   <section class="content">
     <div class="card">
       <div class="head"><h2>Ventilator Outputs</h2></div>
-      <div class="body grid" id="stats">
-        <!-- Filled by JS -->
-      </div>
+      <div class="body grid" id="stats"></div>
     </div>
 
     <div id="waveWrap" class="card">
-      <div class="head"><h2>Waveforms</h2><span class="spacer"></span><small style="color:var(--muted)">Adjust window at left</small></div>
+      <div class="head"><h2>Waveforms</h2><span class="spacer"></span><small style="color:var(--muted)">Adjust window at left • Breath markers shown • Axes labeled</small></div>
       <div class="body">
         <div class="wave">
-          <div class="yaxis">Pressure (cmH<sub>2</sub>O)</div>
+          <div class="yaxis">Pressure<br><span style="font-size:10px">(cmH<sub>2</sub>O)</span></div>
           <canvas id="pCanvas" height="120"></canvas>
+          <div class="xlabels" id="pXLabels"></div>
         </div>
         <div class="wave">
-          <div class="yaxis">Flow (L/s)</div>
+          <div class="yaxis">Flow<br><span style="font-size:10px">(L/s)</span></div>
           <canvas id="fCanvas" height="120"></canvas>
+          <div class="xlabels" id="fXLabels"></div>
         </div>
         <div class="wave">
-          <div class="yaxis">Volume (mL)</div>
+          <div class="yaxis">Volume<br><span style="font-size:10px">(mL)</span></div>
           <canvas id="vCanvas" height="120"></canvas>
+          <div class="xlabels" id="vXLabels"></div>
         </div>
       </div>
     </div>
@@ -157,7 +173,18 @@
     <div class="card">
       <div class="head"><h2>Controls — <span id="modeLabel">VC‑CMV</span></h2></div>
       <div class="body">
-        <div id="controls" class="settings"></div>
+        <div class="controlsWrap">
+          <div id="btnGrid" class="btnGrid"></div>
+          <div class="dial">
+            <div class="knob" id="knob" title="Drag up/down or scroll to adjust"></div>
+            <div class="readout" id="dialValue">—</div>
+            <div class="hint" id="dialLabel">Select a control button</div>
+            <div class="row">
+              <button class="btn" id="decrBtn">−</button>
+              <button class="btn" id="incrBtn">+</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -165,8 +192,8 @@
       <summary>Help</summary>
       <div class="card" style="margin-top:10px">
         <div class="body">
-          <p>This educational simulator approximates single-compartment lung mechanics. <em>VC‑CMV</em> uses set flow (square or ramp) to deliver set VT; pressure results from resistance and compliance. <em>PC‑CMV</em> uses set inspiratory pressure and time; flow and volume are results. <em>PC‑CSV</em> models pressure support with patient effort and cycles off when inspiratory flow decays to the chosen threshold.</p>
-          <p>Outputs update breath‑to‑breath. Minute ventilation and total rate are computed over the last 60 seconds. Use the left panel to adjust lung and effort models.</p>
+          <p>This educational simulator approximates single-compartment lung mechanics. <em>VC‑CMV</em> uses set flow (square or ramp) to deliver set VT; pressure results from resistance and compliance. <em>PC‑CMV</em> uses set inspiratory pressure and time; flow and volume are results. <em>PC‑CSV</em> models pressure support with patient effort and cycles off when inspiratory flow decays to the chosen threshold. In CSV, you can select a <b>trigger type</b> (flow or pressure) and sensitivity.</p>
+          <p>Use <b>Hold</b> to request a one‑shot inspiratory pause; the simulator captures plateau pressure during the hold. <b>Auto‑PEEP</b> is detected as the residual alveolar pressure above set PEEP at end‑expiration.</p>
         </div>
       </div>
     </details>
@@ -182,7 +209,6 @@ const $$ = (s, el=document)=> Array.from(el.querySelectorAll(s));
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 function fmt(n, d=1){ if(!isFinite(n)) return '—'; return Number(n).toFixed(d); }
 function now(){ return performance.now()/1000; }
-function lerp(a,b,t){ return a + (b-a)*t; }
 
 // ---------- Global State ----------
 const state = {
@@ -191,7 +217,9 @@ const state = {
   // Lung model
   C: 0.06,   // L/cmH2O
   R: 10,     // cmH2O/L/s
+  Leak: 0,   // L/min
   // Effort
+  effF: 12,  // breaths/min
   effDelay: 0.15,
   effDur: 1.0,
   pmusMax: 8,
@@ -199,7 +227,7 @@ const state = {
   VC: {
     F: 16,            // bpm
     VT: 500,          // mL
-    VMAX: 60,         // L/min
+    VMAX: 60,         // L/min (peak for Ramp; constant for Square)
     O2: 40,           // %
     PEEP: 5,          // cmH2O
     TPL: 0.2,         // s
@@ -216,13 +244,18 @@ const state = {
   },
   // PC‑CSV
   PSV: {
-    VCycle: 30,       // %
+    VCycle: 30,       // % (flow cycle threshold)
     PEEP: 5,          // cmH2O
     PS: 12,           // cmH2O
     O2: 30,           // %
-    PSlope: 0.15      // s (rise time)
+    PSlope: 0.15,     // s (rise time)
+    TrigType: 'Flow', // 'Flow' | 'Pressure'
+    TrigFlow: 2,      // L/min
+    TrigPress: 1      // cmH2O
   }
 };
+
+const defaultState = JSON.parse(JSON.stringify(state));
 
 // Patient presets
 const presets = {
@@ -231,16 +264,16 @@ const presets = {
   'Infant':  { C: 0.006, R: 30 }
 };
 
-// ---------- Controls UI ----------
+// ---------- Controls surface (buttons + rotary) ----------
 const controlsSpec = {
   'VC-CMV': [
     { key:'F', label:'Frequency F', unit:'Breaths/min', min:1, max:100, step:1, type:'number' },
     { key:'VT', label:'Tidal Volume VT', unit:'mL', min:50, max:1000, step:10, type:'number' },
     { key:'VMAX', label:'Inspiratory Flow VMAX', unit:'L/min', min:1, max:100, step:1, type:'number' },
-    { key:'O2', label:'FiO2', unit:'%', min:21, max:100, step:1, type:'number' },
     { key:'PEEP', label:'PEEP', unit:'cmH2O', min:0, max:50, step:1, type:'number' },
     { key:'TPL', label:'Pause Time', unit:'sec', min:0.0, max:1.0, step:0.05, type:'number' },
-    { key:'flowWave', label:'Flow Waveform', unit:'', options:['Ramp','Square'], type:'select' }
+    { key:'flowWave', label:'Flow Waveform', unit:'', options:['Ramp','Square'], type:'select' },
+    { key:'O2', label:'FiO2', unit:'%', min:21, max:100, step:1, type:'number' }
   ],
   'PC-CMV': [
     { key:'F', label:'Frequency F', unit:'Breaths/min', min:1, max:100, step:1, type:'number' },
@@ -254,52 +287,100 @@ const controlsSpec = {
     { key:'VCycle', label:'Flow Cycle Threshold', unit:'%', min:0, max:100, step:1, type:'number' },
     { key:'PEEP', label:'PEEP', unit:'cmH2O', min:0, max:50, step:1, type:'number' },
     { key:'PS', label:'Pressure Support', unit:'cmH2O', min:0, max:50, step:1, type:'number' },
-    { key:'O2', label:'FiO2', unit:'%', min:21, max:100, step:1, type:'number' },
-    { key:'PSlope', label:'Pressure Rise Time', unit:'sec', min:0.0, max:5.0, step:0.05, type:'number' }
+    { key:'PSlope', label:'Pressure Rise Time', unit:'sec', min:0.0, max:5.0, step:0.05, type:'number' },
+    { key:'TrigType', label:'Trigger Type', unit:'', options:['Flow','Pressure'], type:'select' },
+    { key:'TrigFlow', label:'Flow Trigger', unit:'L/min', min:0.1, max:10, step:0.1, type:'number' },
+    { key:'TrigPress', label:'Pressure Trigger', unit:'cmH2O', min:0.2, max:10, step:0.1, type:'number' },
+    { key:'O2', label:'FiO2', unit:'%', min:21, max:100, step:1, type:'number' }
   ]
 };
 
+let selected = null; // {modeKey, key, spec}
+
 function renderControls(){
   $('#modeLabel').textContent = state.mode.replace('-', '‑');
-  const wrap = $('#controls'); wrap.innerHTML = '';
+  const grid = $('#btnGrid'); grid.innerHTML='';
   const spec = controlsSpec[state.mode];
   const src = state.mode==='VC-CMV'? state.VC : state.mode==='PC-CMV'? state.PC : state.PSV;
-  for (const s of spec){
-    const box = document.createElement('div'); box.className='setting';
-    const id = 'ctl_'+s.key;
-    box.innerHTML = `<label for="${id}">${s.label}${s.unit?` <span class="unit">(${s.unit})</span>`:''}</label>`;
-    let el;
-    if (s.type==='select'){
-      el = document.createElement('select'); for (const o of s.options){ const opt=document.createElement('option'); opt.textContent=o; el.appendChild(opt); }
-      el.value = src[s.key];
-    } else {
-      el = document.createElement('input'); el.type='number'; el.min=s.min; el.max=s.max; el.step=s.step; el.value = src[s.key];
-    }
-    el.id = id; el.onchange = () => { if (s.type==='select') src[s.key]=el.value; else src[s.key]=Number(el.value); recalcIE(); };
-    box.appendChild(el);
-    wrap.appendChild(box);
-  }
+  spec.forEach(s=>{
+    const b = document.createElement('button'); b.type='button'; b.className='paramBtn';
+    b.dataset.key = s.key;
+    b.innerHTML = `<div class="lbl">${s.label}${s.unit?` <span class=\"unit\">(${s.unit})</span>`:''}</div><div class="val" id="val_${s.key}">—</div>`;
+    b.onclick = ()=> { $$('.paramBtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); selected={ modeKey: state.mode, key: s.key, spec: s }; updateDialLabel(); };
+    grid.appendChild(b);
+  });
+  // Default select first
+  const firstBtn = grid.querySelector('.paramBtn'); if(firstBtn){ firstBtn.click(); }
+  refreshButtonValues();
 }
 
+function refreshButtonValues(){
+  const src = state.mode==='VC-CMV'? state.VC : state.mode==='PC-CMV'? state.PC : state.PSV;
+  const spec = controlsSpec[state.mode];
+  spec.forEach(s=>{
+    const v = src[s.key]; const el = $('#val_'+s.key); if(!el) return;
+    const text = (s.type==='select') ? String(v) : (s.unit==='%'? fmt(v,0): s.unit==='sec'? fmt(v,2): fmt(v, s.step<1?1:0));
+    el.textContent = `${text}${s.type==='select'?'':' '}`;
+  });
+}
+
+function nudgeSelected(delta){
+  if(!selected) return;
+  const src = state.mode==='VC-CMV'? state.VC : state.mode==='PC-CMV'? state.PC : state.PSV;
+  const s = selected.spec;
+  if (s.type==='select'){
+    const idx = s.options.indexOf(src[s.key]);
+    const next = clamp(idx + (delta>0?1:-1), 0, s.options.length-1);
+    src[s.key] = s.options[next];
+  } else {
+    const step = Number(s.step||1);
+    const min = Number(s.min ?? -Infinity), max = Number(s.max ?? Infinity);
+    let val = Number(src[s.key]);
+    val = val + delta*step;
+    val = Math.round(val/step)*step;
+    val = clamp(val, min, max);
+    src[s.key] = Number(val);
+  }
+  updateDialLabel(); refreshButtonValues();
+}
+
+function updateDialLabel(){
+  if(!selected){ $('#dialLabel').textContent='Select a control button'; $('#dialValue').textContent='—'; return; }
+  const src = state.mode==='VC-CMV'? state.VC : state.mode==='PC-CMV'? state.PC : state.PSV;
+  const val = src[selected.key];
+  $('#dialLabel').textContent = selected.spec.label;
+  $('#dialValue').textContent = (selected.spec.type==='select')? val : fmt(val, selected.spec.step<1?1:0);
+}
+
+// Dial interactions
+(function(){
+  const knob = $('#knob');
+  let dragging=false, lastY=0;
+  knob.addEventListener('pointerdown', (e)=>{ dragging=true; lastY=e.clientY; knob.setPointerCapture(e.pointerId); });
+  knob.addEventListener('pointermove', (e)=>{ if(!dragging) return; const dy = lastY - e.clientY; lastY = e.clientY; nudgeSelected(Math.sign(dy)); });
+  knob.addEventListener('pointerup', ()=> dragging=false);
+  knob.addEventListener('wheel', (e)=>{ e.preventDefault(); nudgeSelected(e.deltaY<0?+1:-1); }, {passive:false});
+  $('#incrBtn').onclick = ()=> nudgeSelected(+1);
+  $('#decrBtn').onclick = ()=> nudgeSelected(-1);
+})();
+
+// Mode/Patient/Theme/Reset/Help
 $('#mode').addEventListener('change', (e)=>{ state.mode = e.target.value; renderControls(); });
-$('#patient').addEventListener('change', (e)=>{
-  state.patient = e.target.value; const p=presets[state.patient]; state.C=p.C; state.R=p.R; $('#C').value=p.C; $('#C_r').value=p.C; $('#R').value=p.R; $('#R_r').value=p.R; });
+$('#patient').addEventListener('change', (e)=>{ state.patient = e.target.value; const p=presets[state.patient]; state.C=p.C; state.R=p.R; $('#C').value=p.C; $('#C_r').value=p.C; $('#R').value=p.R; $('#R_r').value=p.R; });
 $('#themeBtn').onclick = ()=> document.body.classList.toggle('light');
 $('#resetBtn').onclick = ()=>{ Object.assign(state, JSON.parse(JSON.stringify(defaultState))); applyPatient(); renderControls(); };
-$('#helpBtn').onclick = ()=> alert('Use the mode menu and controls to set the ventilator. Lung/Effort models on the left adjust physiology. Waveforms show the last N seconds.');
+$('#helpBtn').onclick = ()=> alert('Use the mode menu and buttons to select a control. Turn the rotary to adjust. Lung/Effort models on the left adjust physiology. Waveforms have axes and markers. Use Hold to capture plateau (PPL).');
+$('#holdBtn').onclick = ()=> { hold.request = true; hold.duration = 0.5; };
 
-const defaultState = JSON.parse(JSON.stringify(state));
 function applyPatient(){ const p=presets[state.patient]; state.C=p.C; state.R=p.R; }
 
 // Sync side panel inputs
-['C','R','effDelay','effDur','pmusMax'].forEach(id=>{
-  $('#'+id).addEventListener('change', (e)=>{ state[id]= Number(e.target.value); if(id==='C'||id==='R') recalcIE(); });
+['C','R','Leak','effF','effDelay','effDur','pmusMax'].forEach(id=>{
+  $('#'+id).addEventListener('change', (e)=>{ state[id]= Number(e.target.value); });
 });
-['C_r','R_r','effDelay_r','effDur_r','pmusMax_r'].forEach(id=>{
-  $('#'+id).addEventListener('input', (e)=>{ const base=id.replace(/_r$/,''); $('#'+base).value=e.target.value; state[base]=Number(e.target.value); if(base==='C'||base==='R') recalcIE(); });
+['C_r','R_r','Leak_r','effF_r','effDelay_r','effDur_r','pmusMax_r'].forEach(id=>{
+  $('#'+id).addEventListener('input', (e)=>{ const base=id.replace(/_r$/,''); $('#'+base).value=e.target.value; state[base]=Number(e.target.value); });
 });
-
-$('#win').addEventListener('input', ()=>{});
 
 renderControls();
 applyPatient();
@@ -312,8 +393,7 @@ let tPrev = now();
 let sim = {
   t: 0, dt: 0.01, // 10 ms step
   // dynamic state
-  V: 0,          // L, above FRC
-  Palv: 0,       // cmH2O above PEEP
+  V: 0,          // L, above FRC (alveolar)
   Paw: 0,        // cmH2O absolute
   Flow: 0,       // L/s (+ insp)
   phase: 'exp',  // 'insp' | 'pause' | 'exp'
@@ -322,245 +402,273 @@ let sim = {
   cycleDur: 3.0,
   // CSV variables
   csvPeakFlow: 0,
-  // Logs
-  log: [], // array of {t, Paw, Flow, V}
+  // Hold logic
+  // Hold is a one‑shot inspiratory pause that overrides TPL for the next transition
+  // When active, we freeze flow=0 for hold.duration and capture plateau
+  //
   // Breath history for metrics
-  breaths: [] // {start, end, VT, Ti, Te, Ppeak, Pplat}
+  breaths: [], // {start, expStart, cycleEnd, VT (L), VTE (L), Ti, Te, Ppeak, Pplat, autoPEEP}
+  // Logs
+  log: []
 };
 
-function startNewBreath(){
-  sim.phase='insp'; sim.timeInPhase=0; sim.cycleStart=sim.t; sim.csvPeakFlow=0; sim.breaths.push({ start: sim.t, end:null, VT:0, Ti:0, Te:0, Ppeak:0, Pplat:0 });
+const hold = { request:false, duration:0.5, active:false, remaining:0 };
+
+function finalizePreviousBreath(){
+  const prev = sim.breaths[sim.breaths.length-1];
+  if(!prev || prev.cycleEnd) return;
+  prev.cycleEnd = sim.t;
+  if(prev.expStart!=null){ prev.Te = Math.max(0, prev.cycleEnd - prev.expStart); }
+  // Auto‑PEEP at end‑expiration (Palv above PEEP)
+  const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
+  const Palv_end = sim.V / Math.max(1e-6, state.C);
+  prev.autoPEEP = Math.max(0, Palv_end);
 }
 
-function endBreath(){
-  const b = sim.breaths[sim.breaths.length-1]; if(!b||b.end) return;
-  b.end = sim.t; b.Ti = b.Ti || (b.end - b.start - b.Te);
-  // Negative volumes can appear via numeric drift; clamp
-  b.VT = Math.max(0, b.VT);
+function startNewBreath(){
+  // finalize last
+  finalizePreviousBreath();
+  // start new
+  sim.phase='insp'; sim.timeInPhase=0; sim.cycleStart=sim.t; sim.csvPeakFlow=0; hold.active=false; hold.remaining=0;
+  sim.breaths.push({ start: sim.t, expStart:null, cycleEnd:null, VT:0, VTE:0, Ti:0, Te:0, Ppeak:0, Pplat:0, autoPEEP:0 });
 }
 
 function currentBreath(){ return sim.breaths[sim.breaths.length-1]; }
 
-function pmusDuring(t){ // seconds since start of breath
-  const d = state.effDur; if (t<state.effDelay || d<=0) return 0;
-  const x = t - state.effDelay; if (x<0 || x>d) return 0;
-  // half‑sine effort shape up to pmusMax
-  return state.pmusMax * Math.sin(Math.PI * (x/d));
+function pmusAt(t){ // patient effort periodic generator (global time)
+  const f = clamp(state.effF,0,40);
+  if(f<=0) return 0;
+  const T = 60/Math.max(0.1,f);
+  const m = (t % T);
+  const start = clamp(state.effDelay,0,T);
+  const dur = clamp(state.effDur,0,T);
+  if(m < start || m > start+dur || dur<=0) return 0;
+  const x = (m - start) / Math.max(1e-6,dur);
+  return state.pmusMax * Math.sin(Math.PI * x);
 }
 
 function simStep(){
-  const S = state; const C = Math.max(1e-6, S.C); const R = Math.max(1e-6, S.R);
+  const C = Math.max(1e-6, state.C); const R = Math.max(1e-6, state.R); const leakLps = Math.max(0, state.Leak)/60;
+  const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
+  const Pmus = pmusAt(sim.t);
 
-  // Determine target control based on mode and phase
-  if (S.mode==='VC-CMV'){
-    const M = S.VC; const Tcycle = 60/Math.max(1,M.F);
-    // Compute inspiratory time
-    const VT_L = M.VT/1000; // convert mL -> L
-    const Vinsp = Math.max(0.01, M.VMAX/60); // L/s
-    const Ti = (M.flowWave==='Square') ? VT_L / Vinsp : (2*VT_L)/Vinsp; // for ramp triangular with peak=VMAX
-    const Ti_eff = Math.min(Math.max(0.1, Ti), Tcycle);
-    const Tpause = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.1));
-    const Te = Math.max(0.1, Tcycle - Ti_eff - Tpause);
-    sim.cycleDur = Tcycle;
+  // Phases and control
+  if (state.mode==='VC-CMV'){
+    const M = state.VC; const Tcycle = 60/Math.max(1,M.F);
+    const VT_L = M.VT/1000; // L
+    const Vinsp_peak = Math.max(0.01, M.VMAX/60); // L/s
+    const Vinsp = (M.flowWave==='Square') ? Vinsp_peak : Vinsp_peak; // peak used for ramp profile
+    const Ti_nom = (M.flowWave==='Square') ? VT_L / Vinsp_peak : (2*VT_L)/Vinsp_peak; // for ramp, triangular area
+    const Ti_eff = Math.min(Math.max(0.1, Ti_nom), Tcycle);
+    let Tpause_nom = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.1));
+    // One‑shot hold overrides pause once
+    if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; }
 
-    // Phase transitions
     if(sim.phase==='exp' && (sim.t - sim.cycleStart) >= (Tcycle)) startNewBreath();
-    if(sim.phase==='insp' && sim.timeInPhase >= Ti_eff){ sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti_eff; currentBreath().Pplat = S.VC.PEEP + (sim.V/C); }
-    else if(sim.phase==='pause' && sim.timeInPhase >= Tpause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().Te = Te; endBreath(); }
 
-    // Control flow during inspiration
-    let targetFlow = 0;
-    if(sim.phase==='insp'){
-      if (M.flowWave==='Square') targetFlow = Vinsp;
-      else { // Ramp: linear decay Vinsp -> 0 over Ti
-        const t = sim.timeInPhase; targetFlow = Math.max(0, Vinsp * (1 - t/(Ti_eff||1))); }
+    if(sim.phase==='insp' && sim.timeInPhase >= Ti_eff){ sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti_eff; }
+    else if(sim.phase==='pause'){
+      const wantPause = hold.active ? hold.remaining>0 : Tpause_nom>0;
+      if(!wantPause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart = sim.t; }
     }
 
-    // Mechanics
+    // Update mechanics per phase
     if(sim.phase==='insp'){
-      sim.Flow = targetFlow; // L/s
-      const Pel = sim.V / C;           // cmH2O above PEEP
-      const Pres = sim.Flow * R;       // cmH2O
-      sim.Paw = M.PEEP + Pel + Pres;   // absolute
-      sim.V += sim.Flow * sim.dt;      // integrate
-    } else if(sim.phase==='pause'){
-      sim.Flow = 0;
-      const Pel = sim.V / C; sim.Paw = M.PEEP + Pel; // plateau
-    } else { // exhalation (passive): Palv decays with tau=R*C
-      const tau = R*C;
-      const dPalv = -(sim.V/C)/tau * sim.dt * R*C; // or simply: V -> V - (V/tau)*dt
-      sim.V = Math.max(0, sim.V - (sim.V/(tau||1))*sim.dt);
-      sim.Flow = - ( (sim.V/C) ) / R; // towards zero; negative
-      sim.Paw = M.PEEP + (sim.V/C) + sim.Flow*R; // should be near PEEP + small resistive drop
-    }
-
-    // Track breath metrics
-    if(sim.phase!=='exp'){
+      // Target flow shape
+      let targetFlow = (M.flowWave==='Square') ? Vinsp_peak : Math.max(0, Vinsp_peak * (1 - sim.timeInPhase/(Ti_eff||1)));
+      sim.Flow = targetFlow;
+      const Palv = (sim.V/C) - Pmus; // patient effort reduces alveolar pressure
+      const Pres = sim.Flow * R;
+      sim.Paw = PEEPset + Palv + Pres;
+      sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt);
       const b=currentBreath(); if(b){ b.Ppeak = Math.max(b.Ppeak||0, sim.Paw); b.VT = Math.max(b.VT||0, sim.V); }
+    } else if(sim.phase==='pause'){
+      sim.Flow = 0; const Palv = (sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; if(hold.active){ hold.remaining = Math.max(0, hold.remaining - sim.dt); if(hold.remaining===0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
+      // leak during hold
+      sim.V = Math.max(0, sim.V - leakLps*sim.dt);
+    } else { // exhalation (passive)
+      const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt);
+      const Palv = (sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R; // near PEEP
+      if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
     }
 
-  } else if (S.mode==='PC-CMV'){
-    const M = S.PC; const Tcycle = 60/Math.max(1,M.F);
+    // Phase time
+    if(sim.phase==='pause' && !hold.active && Tpause_nom>0){ Tpause_nom = Math.max(0, Tpause_nom - sim.dt); if(Tpause_nom===0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; } }
+
+  } else if (state.mode==='PC-CMV'){
+    const M = state.PC; const Tcycle = 60/Math.max(1,M.F);
     const Ti = clamp(M.ITIME, 0.1, Tcycle);
-    const Tpause = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.1));
-    const Te = Math.max(0.1, Tcycle - Ti - Tpause);
-    sim.cycleDur = Tcycle;
+    let Tpause_nom = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.1));
+    if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; }
 
     if(sim.phase==='exp' && (sim.t - sim.cycleStart) >= (Tcycle)) startNewBreath();
-    if(sim.phase==='insp' && sim.timeInPhase >= Ti){ sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti=Ti; currentBreath().Pplat = M.PEEP + (sim.V/C); }
-    else if(sim.phase==='pause' && sim.timeInPhase >= Tpause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().Te = Te; endBreath(); }
 
-    // Target Paw rises to PEEP+PINSP quickly (simple first‑order with tau=0.1 s)
+    if(sim.phase==='insp' && sim.timeInPhase >= Ti){ sim.phase='pause'; sim.timeInPhase=0; }
+    else if(sim.phase==='pause'){
+      const wantPause = hold.active ? hold.remaining>0 : Tpause_nom>0;
+      if(!wantPause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
+    }
+
     const tauRise = 0.1; // s
     if (sim.phase==='insp'){
-      const Ptarget = M.PEEP + M.PINSP * (1 - Math.exp(-sim.timeInPhase/(tauRise||1e-3)));
-      // Flow from pressure gradient across resistance
-      const Palv = sim.V/C; const dP = (Ptarget - (M.PEEP + Palv));
-      sim.Flow = dP / R; // L/s
-      sim.V = Math.max(0, sim.V + sim.Flow*sim.dt);
-      sim.Paw = Ptarget; // ventilator controls Paw
+      const Pvent = PEEPset + M.PINSP * (1 - Math.exp(-sim.timeInPhase/(tauRise||1e-3)));
+      const Palv = (sim.V/C) - Pmus;
+      const dP = (Pvent - (PEEPset + Palv));
+      sim.Flow = dP / R; sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt); sim.Paw = Pvent;
+      const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); }
     } else if(sim.phase==='pause'){
-      sim.Flow=0; sim.Paw = M.PEEP + sim.V/C;
+      sim.Flow=0; const Palv=(sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; if(hold.active){ hold.remaining=Math.max(0, hold.remaining - sim.dt); if(hold.remaining===0){ hold.active=false; currentBreath().Pplat = sim.Paw; } } sim.V=Math.max(0, sim.V - leakLps*sim.dt);
     } else {
-      // passive exhalation
-      const tau = R*C; sim.V = Math.max(0, sim.V - (sim.V/(tau||1))*sim.dt);
-      sim.Flow = - ( (sim.V/C) ) / R; sim.Paw = M.PEEP + (sim.V/C) + sim.Flow*R;
+      const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt); const Palv=(sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R; if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
     }
-    if(sim.phase!=='exp'){ const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); } }
 
-  } else { // PC‑CSV (pressure support with effort)
-    const M = S.PSV; const Vthresh = clamp(M.VCycle,0,100)/100; // fraction of peak
+    if(sim.phase==='pause' && !hold.active && Tpause_nom>0){ Tpause_nom=Math.max(0,Tpause_nom - sim.dt); if(Tpause_nom===0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; } }
 
-    // Start breath if exhalation and criteria met (simple model): when V has decayed near zero and a minimal delay passed
+  } else { // PC‑CSV
+    const M = state.PSV; const Vthresh = clamp(M.VCycle,0,100)/100;
+
     if(sim.phase==='exp'){
-      const since = sim.t - sim.cycleStart; const ready = (sim.V < 0.05) && (since > S.effDelay + 0.2);
-      if(ready){ startNewBreath(); }
+      const Palv = (sim.V/C) - Pmus; // effective
+      const flowIf = (PEEPset - (PEEPset + Palv)) / R; // = (Pmus - V/C)/R
+      const flowTrig = (M.TrigFlow/60);
+      const pressTrigger = (M.TrigType==='Pressure') && (Pmus >= M.TrigPress);
+      const flowTrigger = (M.TrigType==='Flow') && (flowIf >= flowTrig);
+      const refractory = 0.15;
+      if( (sim.t - sim.cycleStart) > refractory && (flowTrigger || pressTrigger) ){
+        startNewBreath();
+      } else {
+        const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt); const Palv2=(sim.V/C) - Pmus; sim.Flow = - ( (Palv2) ) / R; sim.Paw = PEEPset + Palv2 + sim.Flow*R; if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
+      }
     }
 
     if(sim.phase==='insp'){
-      // ventilator pressure rises toward PEEP + PS with time constant PSlope
-      const Pvent = M.PEEP + M.PS * (1 - Math.exp(-(sim.timeInPhase)/(Math.max(0.02,M.PSlope))));
-      // patient effort (reduces alveolar pressure)
-      const Pmus = pmusDuring(sim.timeInPhase);
-      const Palv = (sim.V/C) - Pmus; // cmH2O above PEEP (effective)
-      const dP = (Pvent - (M.PEEP + Palv));
-      sim.Flow = dP / R;
-      sim.V = Math.max(0, sim.V + sim.Flow*sim.dt);
-      sim.Paw = Pvent; // measured at airway
-      sim.csvPeakFlow = Math.max(sim.csvPeakFlow, sim.Flow);
-      // Flow‑cycle off when flow falls below threshold of peak and at least 0.15 s elapsed
-      if(sim.timeInPhase>0.15 && sim.Flow <= sim.csvPeakFlow * Vthresh){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().Ti = sim.t - currentBreath().start; endBreath(); }
-    } else { // exhalation
-      const tau = R*C; sim.V = Math.max(0, sim.V - (sim.V/(tau||1))*sim.dt);
-      sim.Flow = - ( (sim.V/C) ) / R; sim.Paw = M.PEEP + (sim.V/C) + sim.Flow*R; // near PEEP
+      const Pvent = PEEPset + M.PS * (1 - Math.exp(-(sim.timeInPhase)/(Math.max(0.02,M.PSlope))));
+      const Palv = (sim.V/C) - Pmus; const dP = (Pvent - (PEEPset + Palv));
+      sim.Flow = dP / R; sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt); sim.Paw = Pvent; sim.csvPeakFlow = Math.max(sim.csvPeakFlow, sim.Flow);
+      const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); }
+      if(sim.timeInPhase>0.15 && sim.Flow <= sim.csvPeakFlow * Vthresh){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
     }
-    if(sim.phase!=='exp'){ const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); b.Pplat=M.PEEP + (sim.V/C); } }
   }
 
-  // Update time trackers
+  // Time update
   sim.t += sim.dt; sim.timeInPhase += sim.dt;
 
   // Append log, maintain window
-  const logWin = Math.max(10, Number($('#win').value));
-  sim.log.push({ t: sim.t, Paw: sim.Paw, Flow: sim.Flow, V: sim.V*1000 }); // store volume in mL for plotting
-  while (sim.log.length>0 && (sim.t - sim.log[0].t) > 120) sim.log.shift(); // keep up to 120 s history
+  const logWinCap = 120; // s
+  sim.log.push({ t: sim.t, Paw: sim.Paw, Flow: sim.Flow, V: sim.V*1000 });
+  while (sim.log.length>0 && (sim.t - sim.log[0].t) > logWinCap) sim.log.shift();
 
-  // Breath bookkeeping: clip history to 60 s for metrics
-  while (sim.breaths.length && (sim.t - sim.breaths[0].start) > 90) sim.breaths.shift();
 }
 
-function recalcIE(){
-  // Estimate I:E from current settings (last computed cycle)
-  let I=1, E=2;
-  if (state.mode==='VC-CMV'){
-    const M=state.VC; const T=60/Math.max(1,M.F); const VT_L=M.VT/1000; const Vin=M.VMAX/60; const Ti = (M.flowWave==='Square')? VT_L/Math.max(0.01,Vin): (2*VT_L)/Math.max(0.01,Vin); const Tpause=clamp(M.TPL,0,Math.max(0,T-Ti-0.1)); const Te=Math.max(0.1, T-Ti-Tpause); I=Ti; E=Te;
-  } else if(state.mode==='PC-CMV'){
-    const M=state.PC; const T=60/Math.max(1,M.F); const Ti=clamp(M.ITIME,0.1,T); const Tpause=clamp(M.TPL,0,Math.max(0,T-Ti-0.1)); const Te=Math.max(0.1, T-Ti-Tpause); I=Ti; E=Te;
-  } else {
-    // Rough: estimate with recent breath if available
-    const b=currentBreath(); if(b&&b.Ti&&b.Te){ I=b.Ti; E=b.Te; } else { I=1; E=2; }
-  }
-  const g = gcdApprox(I,E); $('#ieVal').textContent = `${fmt(I/g,1)}:${fmt(E/g,1)}`;
-}
-function gcdApprox(a,b){ // scale to simple ratio (heuristic)
-  const scale=10; const x=Math.round(a*scale), y=Math.round(b*scale); function gcd(m,n){ return n?gcd(n,m%n):m; } const g=gcd(x,y)||1; return (1/scale)*g; }
-
-// ---------- Drawing ----------
+// ---------- Drawing with axes ----------
 function draw(){
-  const Wp = pCan.clientWidth, Hp=pCan.clientHeight; const Wf=fCan.clientWidth, Hf=fCan.clientHeight; const Wv=vCan.clientWidth, Hv=vCan.clientHeight;
   [pCan,fCan,vCan].forEach(cv=>{ const r=devicePixelRatio||1; cv.width=cv.clientWidth*r; cv.height=cv.clientHeight*r; const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0); });
   const win = Math.max(10, Number($('#win').value));
   const tmin = sim.t - win; const data = sim.log.filter(d=> d.t>=tmin);
-  const pMax = Math.max( (state.VC.PEEP||state.PC.PEEP||state.PSV.PEEP)+30, ...data.map(d=>d.Paw+2), 10 );
+  const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
+  const pMax = Math.max( (PEEPset)+30, ...data.map(d=>d.Paw+2), 10 );
   const fMax = Math.max( 1, ...data.map(d=>Math.abs(d.Flow)) ) * 1.2;
   const vMax = Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2;
 
-  function plot(ctx, key, yMax, color){
-    ctx.clearRect(0,0,ctx.canvas.clientWidth, ctx.canvas.clientHeight);
-    ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,ctx.canvas.clientWidth, ctx.canvas.clientHeight);
-    ctx.strokeStyle='rgba(255,255,255,.2)'; ctx.lineWidth=1;
-    // grid
-    for(let i=0;i<=4;i++){ const y= (i/4)*ctx.canvas.clientHeight; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(ctx.canvas.clientWidth,y); ctx.stroke(); }
-    // zero lines for flow and volume
-    if(key==='Flow' || key==='V'){ const y0 = key==='Flow'? yMap(0,yMax,ctx) : yMap(0,yMax,ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(ctx.canvas.clientWidth,y0); ctx.stroke(); }
+  function xMap(t, ctx){ const w=ctx.canvas.clientWidth; return ( (t - tmin) / (win||1) ) * w; }
+  function yMap(v, vmin, vmax, ctx){ const h=ctx.canvas.clientHeight; return h - ((v - vmin) / Math.max(1e-6,(vmax - vmin))) * h; }
 
+  function plot(ctx, key, vmin, vmax, color, xlabEl){
+    const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H);
+    // grid & ticks
+    ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
+    const yTicks=4; for(let i=0;i<=yTicks;i++){ const y= (i/yTicks)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); const val = lerp(vmax,vmin,i/yTicks); ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:0), 4, y-2); }
+    // vertical time ticks every ~5 s
+    const step = Math.max(1, Math.round(win/6));
+    for(let t=Math.ceil(tmin); t<=sim.t; t+=step){ const x=xMap(t,ctx); ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    if(xlabEl){ xlabEl.innerHTML=''; const n=6; for(let i=0;i<=n;i++){ const tt=tmin + (i/n)*win; const div=document.createElement('div'); div.textContent=fmt(tt - tmin,0)+'s'; xlabEl.appendChild(div);} }
+
+    // zero line for flow & volume baseline
+    if(key==='Flow'){ const y0=yMap(0, -fMax, fMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
+    if(key==='V'){ const y0=yMap(0, 0, vMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
+
+    // signal
     ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
     data.forEach((d,i)=>{
-      const x = xMap(d.t, tmin, sim.t, ctx);
-      const y = yMap(d[key], yMax, ctx);
+      const x = xMap(d.t, ctx);
+      const y = yMap(d[key], vmin, vmax, ctx);
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
-  }
-  function xMap(t, t0, t1, ctx){ const w=ctx.canvas.clientWidth; return ( (t - t0) / (t1 - t0) ) * w; }
-  function yMap(v, vmax, ctx){ const h=ctx.canvas.clientHeight; return h - ( (v + (keyIsVolume(ctx)?0:0)) / (vmax||1) ) * h; }
-  function keyIsVolume(ctx){ return ctx===ctxV; }
 
-  plot(ctxP, 'Paw', pMax, getComputedStyle(document.documentElement).getPropertyValue('--brand'));
-  plot(ctxF, 'Flow', fMax, getComputedStyle(document.documentElement).getPropertyValue('--brand2'));
-  plot(ctxV, 'V', vMax, getComputedStyle(document.documentElement).getPropertyValue('--warn'));
+    // PEEP line on pressure
+    if(key==='Paw'){ const yPEEP = yMap(PEEPset, vmin, vmax, ctx); ctx.strokeStyle='rgba(124,156,255,.6)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,yPEEP); ctx.lineTo(W,yPEEP); ctx.stroke(); ctx.setLineDash([]); }
+
+    // breath markers
+    ctx.strokeStyle='rgba(255,255,255,.25)';
+    for(const b of sim.breaths){
+      if(b.start>=tmin && b.start<=sim.t){ const x=xMap(b.start,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+      if(b.cycleEnd&&b.cycleEnd>=tmin && b.cycleEnd<=sim.t){ const x=xMap(b.cycleEnd,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    }
+  }
+
+  plot(ctxP, 'Paw', 0, pMax, getComputedStyle(document.documentElement).getPropertyValue('--brand'), $('#pXLabels'));
+  plot(ctxF, 'Flow', -fMax, fMax, getComputedStyle(document.documentElement).getPropertyValue('--brand2'), $('#fXLabels'));
+  plot(ctxV, 'V', 0, vMax, getComputedStyle(document.documentElement).getPropertyValue('--warn'), $('#vXLabels'));
 }
 
-// ---------- Metrics ----------
+// ---------- Metrics & I:E (requested formula) ----------
 function computeStats(){
-  const win60 = 60; const t0 = sim.t - win60;
-  const breaths = sim.breaths.filter(b=> b.end && b.end>=t0);
-  const FTOT = breaths.length * (60/win60); // per min
-  const VTEs = breaths.map(b=> b.VT*1000 ); // mL
-  const VEmLmin = (VTEs.reduce((a,b)=>a+b,0)) * (60/win60); // mL/min
-  const VE = VEmLmin/1000; // L/min
+  // Complete breath detection: those having cycleEnd within last 60 s
+  const windowSec = 60; const t0 = sim.t - windowSec;
+  const completed = sim.breaths.filter(b=> b.cycleEnd && b.cycleEnd>=t0);
+  const FTOT = completed.length * (60/windowSec);
+  const last = completed[completed.length-1];
 
-  const last = breaths[breaths.length-1];
-  let IEratio = '—'; if(last && last.Ti && last.Te){ const g=gcdApprox(last.Ti,last.Te); IEratio = `${fmt(last.Ti/g,1)}:${fmt(last.Te/g,1)}`; }
+  // Use measured exhaled VTE for last cycle
+  const VTE = last? (last.VTE*1000) : 0; // mL
+  const Ppeak = last? last.Ppeak : 0; const Pplat = last? last.Pplat : 0; const autoPEEP = last? last.autoPEEP : 0;
 
-  // Pmean: time average over last finished breath (or over last window if none)
-  let Pmean = 0; if (last){ const tStart=last.start, tEnd=last.end; const seg = sim.log.filter(d=> d.t>=tStart && d.t<=tEnd); if(seg.length>1){ const dt = (seg[seg.length-1].t-seg[0].t)/(seg.length-1); Pmean = seg.reduce((s,d)=>s+d.Paw*dt,0)/( (seg.length-1)*dt ); } }
+  // Pmean over last completed cycle
+  let Pmean = 0; if (last){ const seg = sim.log.filter(d=> d.t>=last.start && d.t<=last.cycleEnd); if(seg.length>1){ const dt = (seg[seg.length-1].t-seg[0].t)/(seg.length-1); Pmean = seg.reduce((s,d)=>s+d.Paw*dt,0)/( (seg.length-1)*dt ); } }
 
-  const Ppeak = last? last.Ppeak : 0; const Pplat = last? last.Pplat : 0; const VTE = last? (last.VT*1000) : 0; // mL
+  // Minute ventilation over last 60 s
+  const VEmLmin = completed.reduce((sum,b)=> sum + b.VTE*1000, 0) * (60/windowSec); const VE = VEmLmin/1000;
 
-  // Render top ribbon
+  // I:E by requested method
+  let totalCycle = FTOT>0 ? (60/FTOT) : 0;
+  let inspFlow = 0; let VT_L = 0;
+  if(state.mode==='VC-CMV'){
+    const M=state.VC; VT_L = M.VT/1000; inspFlow = (M.flowWave==='Square')? (M.VMAX/60) : (M.VMAX/60)/2; // use average for ramp
+  } else if (state.mode==='PC-CMV' || state.mode==='PC-CSV'){
+    if(last && last.Ti>0){ VT_L = last.VT; inspFlow = (last.VT/Math.max(1e-6,last.Ti)); }
+  }
+  let Ti = (inspFlow>0 && VT_L>0) ? (VT_L/inspFlow) : (last? last.Ti : 0);
+  let Te = (totalCycle>0 && Ti>0) ? Math.max(0.05, totalCycle - Ti) : (last? last.Te : 0);
+  let IEratio = '—'; if(Ti>0 && Te>0){ const g=gcdApprox(Ti,Te); IEratio = `${fmt(Ti/g,1)}:${fmt(Te/g,1)}`; }
+  $('#ieVal').textContent = IEratio;
+
   const list = [
-    {k:'Peak Airway Pressure', abb:'PPEAK', v: fmt(Ppeak,1), u:'cmH2O'},
-    {k:'Plateau Pressure', abb:'PPL', v: fmt(Pplat,1), u:'cmH2O'},
-    {k:'Mean Airway Pressure', abb:'PMEAN', v: fmt(Pmean,1), u:'cmH2O'},
-    {k:'Exhaled Tidal Volume', abb:'VTE', v: fmt(VTE,0), u:'mL'},
-    {k:'Minute Ventilation', abb:'VE TOT', v: fmt(VE,1), u:'L/min'},
-    {k:'Frequency Total', abb:'FTOT', v: fmt(FTOT,1), u:'Breaths/min'},
-    {k:'I : E', abb:'I:E', v: IEratio, u:''}
+    {k:'Peak Airway Pressure', abb:'(PPEAK)', v: fmt(Ppeak,1), u:'cmH2O'},
+    {k:'Plateau Pressure', abb:'(PPL)', v: fmt(Pplat,1), u:'cmH2O'},
+    {k:'Mean Airway Pressure', abb:'(PMEAN)', v: fmt(Pmean,1), u:'cmH2O'},
+    {k:'Exhaled Tidal Volume', abb:'(VTE)', v: fmt(VTE,0), u:'mL'},
+    {k:'Minute Ventilation', abb:'(VE TOT)', v: fmt(VE,1), u:'L/min'},
+    {k:'Frequency Total', abb:'(FTOT)', v: fmt(FTOT,1), u:'Breaths/min'},
+    {k:'I : E', abb:'(I:E)', v: IEratio, u:''},
+    {k:'Intrinsic PEEP', abb:'(Auto‑PEEP)', v: fmt(autoPEEP,1), u:'cmH2O'}
   ];
   const stats = $('#stats'); stats.innerHTML='';
   for (const s of list){
     const div=document.createElement('div'); div.className='stat';
-    div.innerHTML = `<div class="k">${s.k} <span class="unit">${s.abb}</span></div><div class="v">${s.v} <span class="unit">${s.u}</span></div>`;
+    div.innerHTML = `<div class=\"k\">${s.k} <span class=\"unit\">${s.abb}</span></div><div class=\"v\">${s.v} <span class=\"unit\">${s.u}</span></div>`;
     stats.appendChild(div);
   }
-  $('#ieVal').textContent = list[6].v;
 }
+
+function gcdApprox(a,b){ const scale=10; const x=Math.round(a*scale), y=Math.round(b*scale); function gcd(m,n){ return n?gcd(n,m%n):m; } const g=gcd(x,y)||1; return (1/scale)*g; }
 
 // ---------- Main Loop ----------
 function loop(){
-  // Advance sim in fixed steps to keep time‑robust
-  const realNow = now(); let acc = realNow - tPrev; acc = Math.min(acc, 0.2); // avoid spiral of death
+  // Integrate in fixed steps
+  const realNow = now(); let acc = realNow - tPrev; acc = Math.min(acc, 0.2);
   while (acc >= sim.dt){ simStep(); acc -= sim.dt; }
   tPrev = realNow - acc;
   draw(); computeStats();
@@ -570,7 +678,6 @@ function loop(){
 // Initialize
 sim.cycleStart = 0; sim.phase='exp';
 startNewBreath();
-recalcIE();
 loop();
 
 </script>
