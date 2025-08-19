@@ -209,6 +209,7 @@ const $$ = (s, el=document)=> Array.from(el.querySelectorAll(s));
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 function fmt(n, d=1){ if(!isFinite(n)) return '—'; return Number(n).toFixed(d); }
 function now(){ return performance.now()/1000; }
+function lerp(a,b,t){ return a + (b-a)*t; }
 
 // ---------- Global State ----------
 const state = {
@@ -402,10 +403,8 @@ let sim = {
   cycleDur: 3.0,
   // CSV variables
   csvPeakFlow: 0,
-  // Hold logic
-  // Hold is a one‑shot inspiratory pause that overrides TPL for the next transition
-  // When active, we freeze flow=0 for hold.duration and capture plateau
-  //
+  // Pause persistence (fix: pause used to reset each tick)
+  pauseRemaining: 0,
   // Breath history for metrics
   breaths: [], // {start, expStart, cycleEnd, VT (L), VTE (L), Ti, Te, Ppeak, Pplat, autoPEEP}
   // Logs
@@ -420,16 +419,13 @@ function finalizePreviousBreath(){
   prev.cycleEnd = sim.t;
   if(prev.expStart!=null){ prev.Te = Math.max(0, prev.cycleEnd - prev.expStart); }
   // Auto‑PEEP at end‑expiration (Palv above PEEP)
-  const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
   const Palv_end = sim.V / Math.max(1e-6, state.C);
   prev.autoPEEP = Math.max(0, Palv_end);
 }
 
 function startNewBreath(){
-  // finalize last
   finalizePreviousBreath();
-  // start new
-  sim.phase='insp'; sim.timeInPhase=0; sim.cycleStart=sim.t; sim.csvPeakFlow=0; hold.active=false; hold.remaining=0;
+  sim.phase='insp'; sim.timeInPhase=0; sim.cycleStart=sim.t; sim.csvPeakFlow=0; sim.pauseRemaining=0; hold.active=false; hold.remaining=0;
   sim.breaths.push({ start: sim.t, expStart:null, cycleEnd:null, VT:0, VTE:0, Ti:0, Te:0, Ppeak:0, Pplat:0, autoPEEP:0 });
 }
 
@@ -452,77 +448,69 @@ function simStep(){
   const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
   const Pmus = pmusAt(sim.t);
 
-  // Phases and control
   if (state.mode==='VC-CMV'){
     const M = state.VC; const Tcycle = 60/Math.max(1,M.F);
     const VT_L = M.VT/1000; // L
     const Vinsp_peak = Math.max(0.01, M.VMAX/60); // L/s
-    const Vinsp = (M.flowWave==='Square') ? Vinsp_peak : Vinsp_peak; // peak used for ramp profile
-    const Ti_nom = (M.flowWave==='Square') ? VT_L / Vinsp_peak : (2*VT_L)/Vinsp_peak; // for ramp, triangular area
+    const Ti_nom = (M.flowWave==='Square') ? (VT_L / Vinsp_peak) : (2*VT_L)/Vinsp_peak; // triangle area for ramp
     const Ti_eff = Math.min(Math.max(0.1, Ti_nom), Tcycle);
-    let Tpause_nom = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.1));
-    // One‑shot hold overrides pause once
-    if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; }
 
     if(sim.phase==='exp' && (sim.t - sim.cycleStart) >= (Tcycle)) startNewBreath();
 
-    if(sim.phase==='insp' && sim.timeInPhase >= Ti_eff){ sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti_eff; }
-    else if(sim.phase==='pause'){
-      const wantPause = hold.active ? hold.remaining>0 : Tpause_nom>0;
-      if(!wantPause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart = sim.t; }
+    if(sim.phase==='insp' && sim.timeInPhase >= Ti_eff){
+      sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti_eff;
+      if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; sim.pauseRemaining = hold.remaining; }
+      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.1)); }
     }
-
-    // Update mechanics per phase
-    if(sim.phase==='insp'){
+    else if(sim.phase==='pause'){
+      sim.Flow = 0; const Palv = (sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; 
+      sim.V = Math.max(0, sim.V - leakLps*sim.dt);
+      if(hold.active){ hold.remaining = Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
+      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt);
+      if(sim.pauseRemaining<=0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart = sim.t; }
+    }
+    else if(sim.phase==='insp'){
       // Target flow shape
       let targetFlow = (M.flowWave==='Square') ? Vinsp_peak : Math.max(0, Vinsp_peak * (1 - sim.timeInPhase/(Ti_eff||1)));
       sim.Flow = targetFlow;
-      const Palv = (sim.V/C) - Pmus; // patient effort reduces alveolar pressure
-      const Pres = sim.Flow * R;
+      const Palv = (sim.V/C) - Pmus; const Pres = sim.Flow * R;
       sim.Paw = PEEPset + Palv + Pres;
       sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt);
       const b=currentBreath(); if(b){ b.Ppeak = Math.max(b.Ppeak||0, sim.Paw); b.VT = Math.max(b.VT||0, sim.V); }
-    } else if(sim.phase==='pause'){
-      sim.Flow = 0; const Palv = (sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; if(hold.active){ hold.remaining = Math.max(0, hold.remaining - sim.dt); if(hold.remaining===0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
-      // leak during hold
-      sim.V = Math.max(0, sim.V - leakLps*sim.dt);
-    } else { // exhalation (passive)
+    }
+    else { // exhalation (passive)
       const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt);
-      const Palv = (sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R; // near PEEP
+      const Palv = (sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R;
       if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
     }
-
-    // Phase time
-    if(sim.phase==='pause' && !hold.active && Tpause_nom>0){ Tpause_nom = Math.max(0, Tpause_nom - sim.dt); if(Tpause_nom===0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; } }
 
   } else if (state.mode==='PC-CMV'){
     const M = state.PC; const Tcycle = 60/Math.max(1,M.F);
     const Ti = clamp(M.ITIME, 0.1, Tcycle);
-    let Tpause_nom = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.1));
-    if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; }
 
     if(sim.phase==='exp' && (sim.t - sim.cycleStart) >= (Tcycle)) startNewBreath();
 
-    if(sim.phase==='insp' && sim.timeInPhase >= Ti){ sim.phase='pause'; sim.timeInPhase=0; }
-    else if(sim.phase==='pause'){
-      const wantPause = hold.active ? hold.remaining>0 : Tpause_nom>0;
-      if(!wantPause){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
+    if(sim.phase==='insp' && sim.timeInPhase >= Ti){
+      sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti;
+      if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; sim.pauseRemaining = hold.remaining; }
+      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.1)); }
     }
-
-    const tauRise = 0.1; // s
-    if (sim.phase==='insp'){
-      const Pvent = PEEPset + M.PINSP * (1 - Math.exp(-sim.timeInPhase/(tauRise||1e-3)));
-      const Palv = (sim.V/C) - Pmus;
-      const dP = (Pvent - (PEEPset + Palv));
+    else if(sim.phase==='pause'){
+      sim.Flow=0; const Palv=(sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; 
+      sim.V=Math.max(0, sim.V - leakLps*sim.dt);
+      if(hold.active){ hold.remaining=Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
+      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt);
+      if(sim.pauseRemaining<=0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
+    }
+    else if(sim.phase==='insp'){
+      const tauRise = 0.1; const Pvent = PEEPset + M.PINSP * (1 - Math.exp(-sim.timeInPhase/(tauRise||1e-3)));
+      const Palv = (sim.V/C) - Pmus; const dP = (Pvent - (PEEPset + Palv));
       sim.Flow = dP / R; sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt); sim.Paw = Pvent;
       const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); }
-    } else if(sim.phase==='pause'){
-      sim.Flow=0; const Palv=(sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; if(hold.active){ hold.remaining=Math.max(0, hold.remaining - sim.dt); if(hold.remaining===0){ hold.active=false; currentBreath().Pplat = sim.Paw; } } sim.V=Math.max(0, sim.V - leakLps*sim.dt);
-    } else {
+    }
+    else {
       const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt); const Palv=(sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R; if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
     }
-
-    if(sim.phase==='pause' && !hold.active && Tpause_nom>0){ Tpause_nom=Math.max(0,Tpause_nom - sim.dt); if(Tpause_nom===0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; } }
 
   } else { // PC‑CSV
     const M = state.PSV; const Vthresh = clamp(M.VCycle,0,100)/100;
@@ -546,7 +534,7 @@ function simStep(){
       const Palv = (sim.V/C) - Pmus; const dP = (Pvent - (PEEPset + Palv));
       sim.Flow = dP / R; sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt); sim.Paw = Pvent; sim.csvPeakFlow = Math.max(sim.csvPeakFlow, sim.Flow);
       const b=currentBreath(); if(b){ b.Ppeak=Math.max(b.Ppeak||0, sim.Paw); b.VT=Math.max(b.VT||0, sim.V); }
-      if(sim.timeInPhase>0.15 && sim.Flow <= sim.csvPeakFlow * Vthresh){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
+      if(sim.timeInPhase>0.15 && sim.Flow <= sim.csvPeakFlow * Vthresh){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().Ti = sim.t - currentBreath().start; currentBreath().expStart=sim.t; }
     }
   }
 
@@ -557,7 +545,6 @@ function simStep(){
   const logWinCap = 120; // s
   sim.log.push({ t: sim.t, Paw: sim.Paw, Flow: sim.Flow, V: sim.V*1000 });
   while (sim.log.length>0 && (sim.t - sim.log[0].t) > logWinCap) sim.log.shift();
-
 }
 
 // ---------- Drawing with axes ----------
@@ -616,27 +603,23 @@ function draw(){
 
 // ---------- Metrics & I:E (requested formula) ----------
 function computeStats(){
-  // Complete breath detection: those having cycleEnd within last 60 s
   const windowSec = 60; const t0 = sim.t - windowSec;
   const completed = sim.breaths.filter(b=> b.cycleEnd && b.cycleEnd>=t0);
   const FTOT = completed.length * (60/windowSec);
   const last = completed[completed.length-1];
 
-  // Use measured exhaled VTE for last cycle
   const VTE = last? (last.VTE*1000) : 0; // mL
   const Ppeak = last? last.Ppeak : 0; const Pplat = last? last.Pplat : 0; const autoPEEP = last? last.autoPEEP : 0;
 
-  // Pmean over last completed cycle
   let Pmean = 0; if (last){ const seg = sim.log.filter(d=> d.t>=last.start && d.t<=last.cycleEnd); if(seg.length>1){ const dt = (seg[seg.length-1].t-seg[0].t)/(seg.length-1); Pmean = seg.reduce((s,d)=>s+d.Paw*dt,0)/( (seg.length-1)*dt ); } }
 
-  // Minute ventilation over last 60 s
   const VEmLmin = completed.reduce((sum,b)=> sum + b.VTE*1000, 0) * (60/windowSec); const VE = VEmLmin/1000;
 
-  // I:E by requested method
+  // I:E formula
   let totalCycle = FTOT>0 ? (60/FTOT) : 0;
   let inspFlow = 0; let VT_L = 0;
   if(state.mode==='VC-CMV'){
-    const M=state.VC; VT_L = M.VT/1000; inspFlow = (M.flowWave==='Square')? (M.VMAX/60) : (M.VMAX/60)/2; // use average for ramp
+    const M=state.VC; VT_L = M.VT/1000; inspFlow = (M.flowWave==='Square')? (M.VMAX/60) : (M.VMAX/60)/2; // average for ramp
   } else if (state.mode==='PC-CMV' || state.mode==='PC-CSV'){
     if(last && last.Ti>0){ VT_L = last.VT; inspFlow = (last.VT/Math.max(1e-6,last.Ti)); }
   }
@@ -667,11 +650,10 @@ function gcdApprox(a,b){ const scale=10; const x=Math.round(a*scale), y=Math.rou
 
 // ---------- Main Loop ----------
 function loop(){
-  // Integrate in fixed steps
   const realNow = now(); let acc = realNow - tPrev; acc = Math.min(acc, 0.2);
   while (acc >= sim.dt){ simStep(); acc -= sim.dt; }
   tPrev = realNow - acc;
-  draw(); computeStats();
+  try { draw(); computeStats(); } catch (e) { console.error('Render error:', e); }
   requestAnimationFrame(loop);
 }
 
