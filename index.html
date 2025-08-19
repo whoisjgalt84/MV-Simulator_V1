@@ -4,16 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mechanical Ventilator Simulator (VC‑CMV • PC‑CMV • PC‑CSV)</title>
-<meta name="description" content="Educational ventilator simulator with VC‑CMV, PC‑CMV, PC‑CSV, waveforms, lung/effort models, freeze+cursor measurement, I:E diagnostics, and crosshair/snap. Single‑file, no backend." />
+<meta name="description" content="Educational ventilator simulator with VC‑CMV, PC‑CMV, PC‑CSV, waveforms, lung/effort models, freeze+cursor measurement, I:E diagnostics, alarms with audio & silence, and crosshair/snap. Single‑file, no backend." />
 <style>
   :root{
-    --bg:#0b0c10; --panel:#121420; --panel2:#171a26; --ink:#ecf0ff; --muted:#9aa3bd; --brand:#78a8ff; --brand2:#39c6b4; --ok:#56d39a; --warn:#f7b267; --danger:#ff6b6b; --rad:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    --bg:#0b0c10; --panel:#121420; --panel2:#171a26; --ink:#ecf0ff; --muted:#9aa3bd; --brand:#78a8ff; --brand2:#39c6b4; --ok:#2fb67c; --warn:#f7b267; --danger:#ff6b6b; --rad:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
   }
-  .light:root, .light body{ --bg:#fbfbfe; --panel:#ffffff; --panel2:#f3f6ff; --ink:#0c1222; --muted:#4a5270; --brand:#2b5cff; --brand2:#06a89f; --shadow:0 10px 30px rgba(0,0,0,.08); }
+  .light:root, .light body{ --bg:#fbfbfe; --panel:#ffffff; --panel2:#f3f6ff; --ink:#0c1222; --muted:#4a5270; --brand:#2b5cff; --brand2:#06a89f; --ok:#22a56e; --warn:#ffb763; --danger:#ff6b6b; --shadow:0 10px 30px rgba(0,0,0,.08); }
   *{ box-sizing:border-box }
   html,body{ height:100% }
   body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial; background:var(--bg); color:var(--ink); }
-  header{ position:sticky; top:0; z-index:50; background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0)), var(--panel); border-bottom:1px solid rgba(255,255,255,.08); backdrop-filter: blur(8px); }
+  header{ position:sticky; top:0; z-index:60; background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0)), var(--panel); border-bottom:1px solid rgba(255,255,255,.08); backdrop-filter: blur(8px); }
   .wrap{ max-width:1200px; margin:0 auto; padding:10px 16px; }
   .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
   .spacer{ flex:1 }
@@ -28,7 +28,8 @@
 
   main{ max-width:1200px; margin:0 auto; padding:12px 16px; display:grid; grid-template-columns: 260px 1fr; gap:12px }
   @media (max-width: 980px){ main{ grid-template-columns: 1fr } }
-  aside{ background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:var(--rad); padding:12px; position:sticky; top:78px; height:fit-content }
+  .fullRow{ grid-column: 1 / -1; }
+  aside{ background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:var(--rad); padding:12px; position:sticky; top:78px; height:fit-content; align-self:start }
   aside h3{ margin:6px 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:1.1px }
   aside .group{ display:grid; gap:8px; margin-bottom:10px }
   .pair{ display:grid; grid-template-columns: 1fr 120px; gap:8px; align-items:center }
@@ -84,6 +85,15 @@
 
   /* Snap toggle */
   #snapBtn{ margin-left:8px }
+
+  /* Alarm bar */
+  #alarmBar{ display:flex; align-items:center; gap:10px; padding:6px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); box-shadow:var(--shadow); min-height:34px; }
+  #alarmText{ font-weight:800; letter-spacing:.2px }
+  #alarmBar.ok{ background:linear-gradient(180deg, rgba(47,182,124,.35), rgba(47,182,124,.25)); border-color:rgba(47,182,124,.45) }
+  #alarmBar.active{ background:linear-gradient(180deg, rgba(255,107,107,.75), rgba(255,107,107,.45)); border-color:rgba(255,107,107,.85) }
+  #alarmBar.silenced{ background:linear-gradient(180deg, rgba(247,178,103,.7), rgba(247,178,103,.45)); border-color:rgba(247,178,103,.85) }
+  #silenceBtn{ display:none }
+  #alarmBar.active #silenceBtn, #alarmBar.silenced #silenceBtn{ display:inline-flex }
 </style>
 </head>
 <body>
@@ -119,6 +129,12 @@
 </header>
 
 <main>
+  <div class="fullRow" id="alarmBar" class="ok">
+    <span id="alarmText"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="silenceBtn" title="Silence alarm for 60 s">Silence</button>
+  </div>
+
   <aside>
     <h3>Time Window</h3>
     <div class="pair">
@@ -149,6 +165,24 @@
         <input id="effDur_r" type="range" min="0" max="5" step="0.05" value="1.0" oninput="effDur.value=this.value">
         <div class="pair"><label>Max Pmus (cmH<sub>2</sub>O)</label><input id="pmusMax" type="number" min="0" max="30" step="0.5" value="8"></div>
         <input id="pmusMax_r" type="range" min="0" max="30" step="0.5" value="8" oninput="pmusMax.value=this.value">
+      </div>
+    </details>
+
+    <details>
+      <summary>Alarms</summary>
+      <div class="group" style="margin-top:8px">
+        <div class="pair"><label>High (PPEAK) cmH<sub>2</sub>O</label><input id="a_highPpeak" type="number" min="0" max="100" step="1" value="40"></div>
+        <input id="a_highPpeak_r" type="range" min="0" max="100" step="1" value="40" oninput="a_highPpeak.value=this.value">
+        <div class="pair"><label>High (VTE) mL</label><input id="a_highVte" type="number" min="30" max="1000" step="10" value="800"></div>
+        <input id="a_highVte_r" type="range" min="30" max="1000" step="10" value="800" oninput="a_highVte.value=this.value">
+        <div class="pair"><label>Low (VTE) mL</label><input id="a_lowVte" type="number" min="5" max="600" step="5" value="150"></div>
+        <input id="a_lowVte_r" type="range" min="5" max="600" step="5" value="150" oninput="a_lowVte.value=this.value">
+        <div class="pair"><label>High (FTOT) Breaths/min</label><input id="a_highFtot" type="number" min="10" max="60" step="1" value="35"></div>
+        <input id="a_highFtot_r" type="range" min="10" max="60" step="1" value="35" oninput="a_highFtot.value=this.value">
+        <div class="pair"><label>Low (VE TOT) L/min</label><input id="a_lowVe" type="number" min="0" max="30" step="0.5" value="3"></div>
+        <input id="a_lowVe_r" type="range" min="0" max="30" step="0.5" value="3" oninput="a_lowVe.value=this.value">
+        <div class="pair"><label>Apnea Interval (s)</label><input id="a_apnea" type="number" min="0" max="60" step="1" value="20"></div>
+        <input id="a_apnea_r" type="range" min="0" max="60" step="1" value="20" oninput="a_apnea.value=this.value">
       </div>
     </details>
 
@@ -271,6 +305,14 @@ const state = {
     TrigType: 'Flow', // 'Flow' | 'Pressure'
     TrigFlow: 2,      // L/min
     TrigPress: 1      // cmH2O
+  },
+  alarms: {
+    highPpeak: 40,
+    highVte: 800,
+    lowVte: 150,
+    highFtot: 35,
+    lowVe: 3,
+    apnea: 20
   }
 };
 
@@ -403,6 +445,14 @@ function applyPatient(){ const p=presets[state.patient]; state.C=p.C; state.R=p.
 
 ['C','R','Leak','effF','effDelay','effDur','pmusMax'].forEach(id=>{ $('#'+id).addEventListener('change', (e)=>{ state[id]= Number(e.target.value); }); });
 ['C_r','R_r','Leak_r','effF_r','effDelay_r','effDur_r','pmusMax_r'].forEach(id=>{ $('#'+id).addEventListener('input', (e)=>{ const base=id.replace(/_r$/,''); $('#'+base).value=e.target.value; state[base]=Number(e.target.value); }); });
+
+// Alarm inputs
+['a_highPpeak','a_highVte','a_lowVte','a_highFtot','a_lowVe','a_apnea'].forEach(id=>{
+  $('#'+id).addEventListener('change', (e)=>{ const k=id.replace('a_',''); state.alarms[k]= Number(e.target.value); });
+});
+['a_highPpeak_r','a_highVte_r','a_lowVte_r','a_highFtot_r','a_lowVe_r','a_apnea_r'].forEach(id=>{
+  $('#'+id).addEventListener('input', (e)=>{ const base=id.replace(/_r$/,''); $('#'+base).value=e.target.value; const k=base.replace('a_',''); state.alarms[k]= Number(e.target.value); });
+});
 
 renderControls();
 applyPatient();
@@ -607,7 +657,7 @@ function draw(){
   cv.addEventListener('pointerleave', ()=>{ if(!freeze.on) return; freeze.cursor.active=false; });
 });
 
-// ---------- Metrics & I:E (breath-measured incl. pause) ----------
+// ---------- Metrics & I:E (breath-measured incl. pause) + Alarms ----------
 function computeStats(){
   const windowSec = 60; const series = getSeries(); const breaths = getBreaths();
   const tNow = freeze.on ? freeze.t : sim.t; const t0 = tNow - windowSec;
@@ -666,9 +716,54 @@ function computeStats(){
   ];
   const stats = $('#stats'); stats.innerHTML='';
   for (const s of list){ const div=document.createElement('div'); div.className='stat'; div.innerHTML = `<div class=\"k\">${s.k} <span class=\"unit\">${s.abb}</span></div><div class=\"v\">${s.v} <span class=\"unit\">${s.u}</span></div>`; stats.appendChild(div); }
+
+  updateAlarms({ Ppeak, VTE, FTOT, VE, tNow, last });
 }
 
 function gcdApprox(a,b){ const scale=10; const x=Math.round(a*scale), y=Math.round(b*scale); function gcd(m,n){ return n?gcd(n,m%n):m; } const g=gcd(x,y)||1; return (1/scale)*g; }
+
+// ---------- Alarms ----------
+const alarmUI = { bar: $('#alarmBar'), text: $('#alarmText'), silenceBtn: $('#silenceBtn') };
+const beeper = { ctx:null, gain:null, lastBeep:0, silencedUntil:0 };
+
+function ensureAudio(){ if(beeper.ctx) return; const AudioCtx = window.AudioContext || window.webkitAudioContext; if(!AudioCtx) return; beeper.ctx = new AudioCtx(); beeper.gain = beeper.ctx.createGain(); beeper.gain.gain.value = 0.0; beeper.gain.connect(beeper.ctx.destination); }
+function beepOnce(){ if(!beeper.ctx) return; const nowa = beeper.ctx.currentTime; const o = beeper.ctx.createOscillator(); o.type='square'; o.frequency.value=880; o.connect(beeper.gain); beeper.gain.gain.setValueAtTime(0.0, nowa); beeper.gain.gain.linearRampToValueAtTime(0.2, nowa+0.01); beeper.gain.gain.linearRampToValueAtTime(0.0, nowa+0.18); o.start(nowa); o.stop(nowa+0.2); }
+
+document.addEventListener('pointerdown', ()=>{ try{ ensureAudio(); beeper?.ctx?.resume(); }catch{} }, {once:true});
+alarmUI.silenceBtn.addEventListener('click', ()=>{ beeper.silencedUntil = now() + 60; updateAlarmBar([], 'silenced'); });
+
+function updateAlarmBar(names, stateName){
+  alarmUI.bar.classList.remove('ok','active','silenced');
+  if(stateName==='silenced'){ alarmUI.bar.classList.add('silenced'); alarmUI.text.textContent = names.length? names.join(' • ') + ' — silenced 60s' : 'Silenced'; return; }
+  if(names.length===0){ alarmUI.bar.classList.add('ok'); alarmUI.text.textContent=''; return; }
+  alarmUI.bar.classList.add('active'); alarmUI.text.textContent = names.join(' • ');
+}
+
+function updateAlarms(m){
+  const names = [];
+  const A = state.alarms;
+  if(m.last){
+    if(A.highPpeak>0 && m.Ppeak > A.highPpeak) names.push('High PPEAK');
+    if(A.highVte>=30 && m.VTE > A.highVte) names.push('High VTE');
+    if(A.lowVte>=5 && m.VTE < A.lowVte) names.push('Low VTE');
+  }
+  if(A.highFtot>=10 && m.FTOT > A.highFtot) names.push('High FTOT');
+  if(A.lowVe>=0 && m.VE < A.lowVe) names.push('Low VE TOT');
+  if(A.apnea>0){
+    const recent = getBreaths().filter(b=> (m.tNow - b.start) <= A.apnea);
+    if(recent.length===0) names.push('Apnea');
+  }
+
+  // Audio + UI
+  const isActive = names.length>0;
+  if(isActive){
+    const silenced = now() < beeper.silencedUntil;
+    updateAlarmBar(names, silenced? 'silenced':'active');
+    if(!silenced){ ensureAudio(); try{ beeper?.ctx?.resume(); }catch{}; if(now() - beeper.lastBeep > 1.2){ beepOnce(); beeper.lastBeep = now(); } }
+  } else {
+    updateAlarmBar([], 'ok');
+  }
+}
 
 // ---------- Main Loop ----------
 function loop(){
