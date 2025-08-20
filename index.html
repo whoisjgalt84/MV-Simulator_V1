@@ -612,8 +612,8 @@ function draw(){
 
   // Toggle labels based on mode
   if(state.loops.on){
-    $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">V (x) vs Paw (y)</span>';
-    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">V (x) vs Flow (y, +insp / −exp)</span>';
+    $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">V (y) vs Paw (x)</span>';
+    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">Flow vs V</span>';
     $('#yV').innerHTML = '';
     $('#rowV').classList.add('hidden');
     $('#pXLabels').classList.add('hidden');
@@ -679,7 +679,7 @@ function draw(){
     plot(ctxV, 'V', 0, Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2, warn, $('#vXLabels'));
 
   } else {
-    // Loops view (pause‑excluded; V on x‑axis)
+    // Loops view
     function clear(ctx){ const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; ctx.clearRect(0,0,W,H); ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H); return {W,H}; }
     function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
       const {W,H} = {W:ctx.canvas.clientWidth,H:ctx.canvas.clientHeight};
@@ -690,51 +690,37 @@ function draw(){
       ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
     }
 
-    // Last breath segments, excluding inspiratory pause (vertical artifact)
+    // Get last completed breath segment
     const last = getBreaths().slice(-1)[0];
-    let segInsp = [], segExp = [], segAll = [];
-    if(last && last.start!=null){
-      const tExpStart = last.expStart ?? last.start; // if missing, fallback
-      const tEnd = last.cycleEnd ?? tNow;
-      segInsp = getSeries().filter(d=> d.t>=last.start && d.t<=tExpStart);
-      segExp  = getSeries().filter(d=> d.t>=tExpStart && d.t<=tEnd);
-      segAll = segInsp.concat(segExp);
-    }
-    if(segAll.length < 4){ segAll = data; segInsp = data; segExp = []; }
+    let seg = null;
+    if(last && last.start!=null){ const t1 = last.cycleEnd ?? tNow; seg = getSeries().filter(d=> d.t>=last.start && d.t<=t1); }
+    if(!seg || seg.length<4){ seg = data; }
 
-    // Ranges from both phases
-    const PawMax = Math.max(10, ...segAll.map(d=>d.Paw));
-    const Vmax = Math.max(100, ...segAll.map(d=>Math.max(0,d.V)));
-    const Fabs = Math.max(1, ...segAll.map(d=>Math.abs(d.Flow)));
+    // Ranges
+    const PawMax = Math.max(10, ...seg.map(d=>d.Paw));
+    const Vmax = Math.max(100, ...seg.map(d=>Math.max(0,d.V)));
+    const Fabs = Math.max(1, ...seg.map(d=>Math.abs(d.Flow)));
 
-    // Helpers (V on x)
-    function makeMaps(ctx, pad=28){
-      const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
-      const xMap=(v)=> xMin + (Math.max(0,v)/Math.max(1,Vmax)) * (xMax - xMin);
-      return { W, H, xMin, xMax, yMin, yMax, xMap,
-        yMapP:(p)=> yMax - (p/Math.max(1,PawMax)) * (yMax - yMin),
-        yMapF:(f)=> yMax - ((f + Fabs)/(2*Math.max(1,Fabs))) * (yMax - yMin) };
-    }
-
-    // P–V loop (Paw vs V)
-    (function(){ const {W,H,xMin,xMax,yMin,yMax,xMap,yMapP} = makeMaps(ctxP); clear(ctxP);
-      // curves
+    // P–V loop (V vs Paw) — Pressure on X, Volume on Y
+    (function(){ const {W,H} = clear(ctxP); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
+      function xMap(p){ return xMin + (p/Math.max(1e-6,PawMax)) * (xMax - xMin); }
+      function yMap(v){ return yMax - (Math.max(0,v)/Math.max(1e-6,Vmax)) * (yMax - yMin); }
       ctxP.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand'); ctxP.lineWidth=2; ctxP.beginPath();
-      segInsp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapP(d.Paw); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
-      if(segExp.length){ ctxP.beginPath(); segExp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapP(d.Paw); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke(); }
-      // axes & ticks
-      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
-      const yTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({y:yMapP(p),label:fmt(p,0)}));
-      drawAxes(ctxP, xMap(0), yMapP(0), xTicks, yTicks, 'mL', 'cmH2O'); })();
+      seg.forEach((d,i)=>{ const x=xMap(d.Paw); const y=yMap(d.V); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
+      // Axes & ticks
+      const xTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({x:xMap(p)-6,label:fmt(p,0)}));
+      const yTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({y:yMap(v),label:(v|0)}));
+      drawAxes(ctxP, xMap(0), yMap(0), xTicks, yTicks, 'cmH2O', 'mL'); })();
 
-    // F–V loop (Flow vs V) — inspiratory positive, expiratory negative
-    (function(){ const {W,H,xMin,xMax,yMin,yMax,xMap,yMapF} = makeMaps(ctxF); clear(ctxF);
+    // F–V loop (Flow vs V) — unchanged
+    (function(){ const {W,H} = clear(ctxF); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16; const y0 = (yMin+yMax)/2;
+      function xMap(v){ return xMin + (Math.max(0,v)/Vmax) * (xMax - xMin); }
+      function yMap(f){ return yMax - ((f + Fabs)/(2*Fabs)) * (yMax - yMin); }
       ctxF.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand2'); ctxF.lineWidth=2; ctxF.beginPath();
-      segInsp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapF(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
-      if(segExp.length){ ctxF.beginPath(); segExp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapF(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke(); }
+      seg.forEach((d,i)=>{ const x=xMap(d.V); const y=yMap(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
       const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
-      const yTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({y:yMapF(f),label:fmt(f,1)}));
-      drawAxes(ctxF, xMap(0), yMapF(0), xTicks, yTicks, 'mL', 'L/s'); })();
+      const yTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({y:yMap(f),label:fmt(f,1)}));
+      drawAxes(ctxF, xMap(0), yMap(0), xTicks, yTicks, 'mL', 'L/s'); })();
 
     // bottom canvas cleared
     (function(){ const {W,H} = clear(ctxV); ctxV.fillStyle='rgba(255,255,255,.25)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active (P–V top, F–V middle)', 8, 18); })();
