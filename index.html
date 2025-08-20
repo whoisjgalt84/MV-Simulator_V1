@@ -602,55 +602,6 @@ function nearestExtremum(series, key, t, halfWin=0.35){
   return cand;
 }
 
-// ---------- Helpers for loops (axes, arrows, inflection points) ----------
-function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
-  const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight;
-  ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif';
-  for(const xt of xTicks){ ctx.fillText(xt.label, xt.x, H-4); }
-  for(const yt of yTicks){ ctx.fillText(yt.label, 4, yt.y-2); }
-  ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
-}
-
-function drawArrow(ctx,x0,y0,x1,y1,color='rgba(255,255,255,.75)'){
-  const ang = Math.atan2(y1-y0,x1-x0);
-  const len = 8; const w=5;
-  ctx.strokeStyle=color; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x1,y1);
-  ctx.lineTo(x1 - len*Math.cos(ang - Math.PI/6), y1 - len*Math.sin(ang - Math.PI/6));
-  ctx.lineTo(x1 - len*Math.cos(ang + Math.PI/6), y1 - len*Math.sin(ang + Math.PI/6));
-  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
-}
-
-function downsample(points, every){ const out=[]; for(let i=every;i<points.length;i+=every){ out.push([points[i- every], points[i]]); } return out; }
-
-function findInflectionsPV(seg){
-  if(!seg || seg.length<6) return {insp:null, exp:null};
-  // Split by phase using expStart if available in the last breath
-  const breaths = getBreaths(); const last = breaths[breaths.length-1];
-  const te = last?.expStart ?? seg[0].t + (seg[seg.length-1].t - seg[0].t)/2;
-  const insp = seg.filter(d=> d.t<=te);
-  const exp  = seg.filter(d=> d.t>=te);
-  function pick(segment){
-    if(segment.length<6) return null;
-    const P = segment.map(d=> d.Paw); const V = segment.map(d=> Math.max(0,d.V));
-    const n = P.length; const eps = 1e-6;
-    // smooth a bit
-    const Ps=[], Vs=[]; for(let i=0;i<n;i++){ const i0=Math.max(0,i-1), i1=Math.min(n-1,i+1); Ps.push((P[i0]+P[i]+P[i1])/3); Vs.push((V[i0]+V[i]+V[i1])/3); }
-    const d1=[]; for(let i=1;i<n-1;i++){ const dP=(Ps[i+1]-Ps[i-1]); const dV=(Vs[i+1]-Vs[i-1]); d1.push(dV/((dP===0)?eps:dP)); }
-    const d2=[]; for(let i=1;i<d1.length-1;i++){ const dP=(Ps[i+1]-Ps[i-1]); const dd=(d1[i]-d1[i-1]); d2.push(dd/((dP===0)?eps:dP)); }
-    if(d2.length<3) return null;
-    let iMax=0,iMin=0; for(let i=1;i<d2.length;i++){ if(d2[i]>d2[iMax]) iMax=i; if(d2[i]<d2[iMin]) iMin=i; }
-    // shift indices back to original segment index space (within this segment)
-    const idxLIP = iMax+2; const idxUIP = iMin+2;
-    const thr = 1e-4; if(Math.abs(d2[iMax])<thr && Math.abs(d2[iMin])<thr) return null;
-    return { idxLIP, idxUIP };
-  }
-  return { insp: pick(insp), exp: pick(exp) };
-}
-
 // ---------- Drawing (time series & loops) + freeze & crosshair ----------
 function draw(){
   [pCan,fCan,vCan].forEach(cv=>{ const r=devicePixelRatio||1; cv.width=cv.clientWidth*r; cv.height=cv.clientHeight*r; const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0); });
@@ -661,8 +612,8 @@ function draw(){
 
   // Toggle labels based on mode
   if(state.loops.on){
-    $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">V (y) vs Paw (x)</span>';
-    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">V (y) vs Flow (x)</span>';
+    $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">V (x) vs Paw (y)</span>';
+    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">V (x) vs Flow (y, +insp / −exp)</span>';
     $('#yV').innerHTML = '';
     $('#rowV').classList.add('hidden');
     $('#pXLabels').classList.add('hidden');
@@ -728,69 +679,65 @@ function draw(){
     plot(ctxV, 'V', 0, Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2, warn, $('#vXLabels'));
 
   } else {
-    // -------- Loops view (V on Y for both PV and FV) --------
+    // Loops view (pause‑excluded; V on x‑axis)
     function clear(ctx){ const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; ctx.clearRect(0,0,W,H); ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H); return {W,H}; }
+    function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
+      const {W,H} = {W:ctx.canvas.clientWidth,H:ctx.canvas.clientHeight};
+      ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif';
+      for(const xt of xTicks){ ctx.fillText(xt.label, xt.x, H-4); }
+      for(const yt of yTicks){ ctx.fillText(yt.label, 4, yt.y-2); }
+      ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
+    }
 
-    // Get last completed breath segment (fallback to on-screen data)
+    // Last breath segments, excluding inspiratory pause (vertical artifact)
     const last = getBreaths().slice(-1)[0];
-    const t1 = last && (last.cycleEnd ?? tNow);
-    let seg = null; if(last && last.start!=null){ seg = getSeries().filter(d=> d.t>=last.start && d.t<=t1); }
-    if(!seg || seg.length<4){ seg = data; }
+    let segInsp = [], segExp = [], segAll = [];
+    if(last && last.start!=null){
+      const tExpStart = last.expStart ?? last.start; // if missing, fallback
+      const tEnd = last.cycleEnd ?? tNow;
+      segInsp = getSeries().filter(d=> d.t>=last.start && d.t<=tExpStart);
+      segExp  = getSeries().filter(d=> d.t>=tExpStart && d.t<=tEnd);
+      segAll = segInsp.concat(segExp);
+    }
+    if(segAll.length < 4){ segAll = data; segInsp = data; segExp = []; }
 
-    // Split insp/exp for markers
-    let te = seg[0].t + (seg[seg.length-1].t - seg[0].t)/2;
-    if(last && last.expStart) te = last.expStart;
-    const inspSeg = seg.filter(d=> d.t<=te);
-    const expSeg  = seg.filter(d=> d.t>=te);
+    // Ranges from both phases
+    const PawMax = Math.max(10, ...segAll.map(d=>d.Paw));
+    const Vmax = Math.max(100, ...segAll.map(d=>Math.max(0,d.V)));
+    const Fabs = Math.max(1, ...segAll.map(d=>Math.abs(d.Flow)));
 
-    // Ranges
-    const PawMax = Math.max(10, ...seg.map(d=>d.Paw));
-    const Vmax = Math.max(100, ...seg.map(d=>Math.max(0,d.V)));
-    const Fabs = Math.max(1, ...seg.map(d=>Math.abs(d.Flow)));
+    // Helpers (V on x)
+    function makeMaps(ctx, pad=28){
+      const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
+      const xMap=(v)=> xMin + (Math.max(0,v)/Math.max(1,Vmax)) * (xMax - xMin);
+      return { W, H, xMin, xMax, yMin, yMax, xMap,
+        yMapP:(p)=> yMax - (p/Math.max(1,PawMax)) * (yMax - yMin),
+        yMapF:(f)=> yMax - ((f + Fabs)/(2*Math.max(1,Fabs))) * (yMax - yMin) };
+    }
 
-    const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand');
-    const brand2 = getComputedStyle(document.documentElement).getPropertyValue('--brand2');
+    // P–V loop (Paw vs V)
+    (function(){ const {W,H,xMin,xMax,yMin,yMax,xMap,yMapP} = makeMaps(ctxP); clear(ctxP);
+      // curves
+      ctxP.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand'); ctxP.lineWidth=2; ctxP.beginPath();
+      segInsp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapP(d.Paw); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
+      if(segExp.length){ ctxP.beginPath(); segExp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapP(d.Paw); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke(); }
+      // axes & ticks
+      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
+      const yTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({y:yMapP(p),label:fmt(p,0)}));
+      drawAxes(ctxP, xMap(0), yMapP(0), xTicks, yTicks, 'mL', 'cmH2O'); })();
 
-    // P–V loop (x=Paw [cmH2O], y=V [mL])
-    (function(){ const {W,H} = clear(ctxP); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
-      function xMap(p){ return xMin + (p/Math.max(1, PawMax)) * (xMax - xMin); }
-      function yMap(v){ return yMax - (Math.max(0,v)/Math.max(1, Vmax)) * (yMax - yMin); }
-      // path
-      ctxP.strokeStyle=brand; ctxP.lineWidth=2; ctxP.beginPath(); seg.forEach((d,i)=>{ const x=xMap(d.Paw); const y=yMap(d.V); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
-      // axes
-      const xTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({x:xMap(p)-6,label:fmt(p,0)}));
-      const yTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({y:yMap(v),label:(v|0)}));
-      drawAxes(ctxP, xMap(0), yMap(0), xTicks, yTicks, 'cmH2O', 'mL');
-      // direction arrows (downsampled)
-      const step = Math.max(6, Math.round(seg.length/12));
-      for(const [a,b] of downsample(seg, step)) drawArrow(ctxP, xMap(a.Paw), yMap(a.V), xMap(b.Paw), yMap(b.V), brand);
-      // inflection points (inspiration)
-      const infl = findInflectionsPV(seg);
-      if(infl.insp && inspSeg.length){
-        const li = Math.min(infl.insp.idxLIP, inspSeg.length-1); const ui = Math.min(infl.insp.idxUIP, inspSeg.length-1);
-        const L = inspSeg[li]; const U = inspSeg[ui];
-        if(L){ ctxP.fillStyle='rgba(255,255,255,.9)'; ctxP.beginPath(); ctxP.arc(xMap(L.Paw), yMap(L.V), 4, 0, Math.PI*2); ctxP.fill(); ctxP.fillStyle='rgba(255,255,255,.85)'; ctxP.font='11px ui-sans-serif'; ctxP.fillText('LIP', xMap(L.Paw)+6, yMap(L.V)-6); }
-        if(U){ ctxP.fillStyle='rgba(255,255,255,.9)'; ctxP.beginPath(); ctxP.arc(xMap(U.Paw), yMap(U.V), 4, 0, Math.PI*2); ctxP.fill(); ctxP.fillStyle='rgba(255,255,255,.85)'; ctxP.font='11px ui-sans-serif'; ctxP.fillText('UIP', xMap(U.Paw)+6, yMap(U.V)-6); }
-      }
-    })();
+    // F–V loop (Flow vs V) — inspiratory positive, expiratory negative
+    (function(){ const {W,H,xMin,xMax,yMin,yMax,xMap,yMapF} = makeMaps(ctxF); clear(ctxF);
+      ctxF.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand2'); ctxF.lineWidth=2; ctxF.beginPath();
+      segInsp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapF(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
+      if(segExp.length){ ctxF.beginPath(); segExp.forEach((d,i)=>{ const x=xMap(d.V); const y=yMapF(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke(); }
+      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
+      const yTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({y:yMapF(f),label:fmt(f,1)}));
+      drawAxes(ctxF, xMap(0), yMapF(0), xTicks, yTicks, 'mL', 'L/s'); })();
 
-    // F–V loop (x=Flow [L/s], y=V [mL])
-    (function(){ const {W,H} = clear(ctxF); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
-      function xMap(f){ return xMin + ((f + Fabs)/(2*Fabs)) * (xMax - xMin); }
-      function yMap(v){ return yMax - (Math.max(0,v)/Math.max(1,Vmax)) * (yMax - yMin); }
-      ctxF.strokeStyle=brand2; ctxF.lineWidth=2; ctxF.beginPath(); seg.forEach((d,i)=>{ const x=xMap(d.Flow); const y=yMap(d.V); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
-      // axes
-      const xTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({x:xMap(f)-6,label:fmt(f,1)}));
-      const yTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({y:yMap(v),label:(v|0)}));
-      // zero lines at Flow=0 and V=0
-      drawAxes(ctxF, xMap(0), yMap(0), xTicks, yTicks, 'L/s', 'mL');
-      // direction arrows
-      const step = Math.max(6, Math.round(seg.length/12));
-      for(const [a,b] of downsample(seg, step)) drawArrow(ctxF, xMap(a.Flow), yMap(a.V), xMap(b.Flow), yMap(b.V), brand2);
-    })();
-
-    // bottom canvas cleared + hint
-    (function(){ const {W,H} = clear(ctxV); ctxV.fillStyle='rgba(255,255,255,.45)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active — Volume on Y (P–V top, F–V middle)', 8, 18); })();
+    // bottom canvas cleared
+    (function(){ const {W,H} = clear(ctxV); ctxV.fillStyle='rgba(255,255,255,.25)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active (P–V top, F–V middle)', 8, 18); })();
   }
 }
 
