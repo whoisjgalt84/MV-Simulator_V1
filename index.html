@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mechanical Ventilator Simulator (VC‑CMV • PC‑CMV • PC‑CSV)</title>
-<meta name="description" content="Educational ventilator simulator with VC‑CMV, PC‑CMV, PC‑CSV, waveforms, lung/effort models, freeze+cursor measurement, I:E diagnostics, alarms with audio & silence, and crosshair/snap. Single‑file, no backend." />
+<meta name="description" content="Ventilator simulator with VC‑CMV, PC‑CMV, PC‑CSV, waveforms/loops, lung & effort models, freeze cursor, I:E diagnostics, alarms with audio & silence, and Pplat retention. Single‑file, no backend." />
 <style>
   :root{
     --bg:#0b0c10; --panel:#121420; --panel2:#171a26; --ink:#ecf0ff; --muted:#9aa3bd; --brand:#78a8ff; --brand2:#39c6b4; --ok:#2fb67c; --warn:#f7b267; --danger:#ff6b6b; --rad:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
@@ -22,9 +22,9 @@
 
   /* Inputs & buttons */
   select, input[type="number"], input[type="text"]{ background:var(--panel2); color:var(--ink) !important; border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:8px 10px; }
-  .btn{ appearance:none; border:1px solid rgba(255,255,255,.12); background:var(--panel2); color:var(--ink); padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow:var(--shadow); }
+  .btn{ appearance:none; border:1px solid rgba(255,255,255,.12); background:var(--panel2); color:var(--ink); padding:8px 12px; border-radius:10px; font-weight:800; cursor:pointer; box-shadow:var(--shadow); }
   .btn.primary{ background: linear-gradient(180deg, var(--brand), var(--brand2)); border-color:transparent; color:white }
-  .toolbar .btn{ font-weight:600 }
+  .toolbar .btn{ font-weight:700 }
 
   main{ max-width:1200px; margin:0 auto; padding:12px 16px; display:grid; grid-template-columns: 260px 1fr; gap:12px }
   @media (max-width: 980px){ main{ grid-template-columns: 1fr } }
@@ -46,15 +46,16 @@
   .grid.narrow{ grid-template-columns: repeat(6, minmax(130px, 1fr)); }
   .stat{ background:var(--panel2); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:8px 10px }
   .stat .k{ font-size:11px; color:var(--muted) }
-  .stat .v{ font-weight:800; font-size:18px }
+  .stat .v{ font-weight:900; font-size:18px }
   .unit{ font-size:11px; color:var(--muted); margin-left:6px }
 
-  /* Waveforms */
+  /* Waveforms / Loops */
   #waveWrap{ background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:var(--rad); padding:8px; position:relative }
   .wave{ display:grid; grid-template-columns: 60px 1fr; align-items:center; gap:8px; padding:6px 0; position:relative }
-  .yaxis{ color:var(--muted); font-size:12px; text-align:right; padding-right:4px }
+  .yaxis{ color:var(--muted); font-size:12px; text-align:right; padding-right:4px; min-width:60px }
   canvas{ width:100%; height:120px; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)); border-radius:8px; }
   .xlabels{ position:absolute; left:60px; right:0; bottom:2px; display:flex; justify-content:space-between; font-size:11px; color:var(--muted); pointer-events:none }
+  .hidden{ display:none !important }
 
   /* Control surface with buttons + rotary knob */
   .controlsWrap{ display:grid; grid-template-columns: 1fr 160px; gap:12px; align-items:stretch }
@@ -84,7 +85,7 @@
   #freezeBadge.on{ display:inline-block; }
 
   /* Snap toggle */
-  #snapBtn{ margin-left:8px }
+  #snapBtn, #loopsBtn{ margin-left:8px }
 
   /* Alarm bar */
   #alarmBar{ display:flex; align-items:center; gap:10px; padding:6px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); box-shadow:var(--shadow); min-height:34px; }
@@ -121,7 +122,7 @@
       </label>
       <button class="btn" id="freezeBtn" title="Freeze/unfreeze the scrolling waveforms">Freeze</button>
       <button class="btn" id="themeBtn" title="Toggle theme">Theme</button>
-      <button class="btn" id="resetBtn" title="Reset">Reset</button>
+      <button class="btn" id="resetBtn" title="Reset to defaults">Reset</button>
       <button class="btn" id="holdBtn" title="Inspiratory Hold / Plateau">Hold</button>
       <button class="btn primary" id="helpBtn" title="Help">Help</button>
     </div>
@@ -145,8 +146,8 @@
     <details open>
       <summary>Lung Model</summary>
       <div class="group" style="margin-top:8px">
-        <div class="pair"><label>Compliance (L/cmH<sub>2</sub>O)</label><input id="C" type="number" min="0.0" max="100" step="0.001" value="0.06"></div>
-        <input id="C_r" type="range" min="0.000" max="0.200" step="0.001" value="0.060" oninput="C.value=this.value">
+        <div class="pair"><label>Compliance (L/cmH<sub>2</sub>O)</label><input id="C" type="number" min="0.0" max="100" step="0.001" value="0.05"></div>
+        <input id="C_r" type="range" min="0.000" max="0.200" step="0.001" value="0.050" oninput="C.value=this.value">
         <div class="pair"><label>Resistance (cmH<sub>2</sub>O/L/s)</label><input id="R" type="number" min="0" max="100" step="0.1" value="10"></div>
         <input id="R_r" type="range" min="0" max="60" step="0.5" value="10" oninput="R.value=this.value">
         <div class="pair"><label>Leak (L/min)</label><input id="Leak" type="number" min="0" max="30" step="0.5" value="0"></div>
@@ -157,14 +158,14 @@
     <details>
       <summary>Effort Model</summary>
       <div class="group" style="margin-top:8px">
-        <div class="pair"><label>Patient Frequency</label><input id="effF" type="number" min="0" max="40" step="1" value="12"></div>
-        <input id="effF_r" type="range" min="0" max="40" step="1" value="12" oninput="effF.value=this.value">
-        <div class="pair"><label>Delay Before Effort (s)</label><input id="effDelay" type="number" min="0" max="5" step="0.05" value="0.15"></div>
-        <input id="effDelay_r" type="range" min="0" max="5" step="0.05" value="0.15" oninput="effDelay.value=this.value">
-        <div class="pair"><label>Duration of Effort (s)</label><input id="effDur" type="number" min="0" max="5" step="0.05" value="1.0"></div>
-        <input id="effDur_r" type="range" min="0" max="5" step="0.05" value="1.0" oninput="effDur.value=this.value">
-        <div class="pair"><label>Max Pmus (cmH<sub>2</sub>O)</label><input id="pmusMax" type="number" min="0" max="30" step="0.5" value="8"></div>
-        <input id="pmusMax_r" type="range" min="0" max="30" step="0.5" value="8" oninput="pmusMax.value=this.value">
+        <div class="pair"><label>Patient Frequency</label><input id="effF" type="number" min="0" max="40" step="1" value="0"></div>
+        <input id="effF_r" type="range" min="0" max="40" step="1" value="0" oninput="effF.value=this.value">
+        <div class="pair"><label>Delay Before Effort (s)</label><input id="effDelay" type="number" min="0" max="5" step="0.05" value="0.00"></div>
+        <input id="effDelay_r" type="range" min="0" max="5" step="0.05" value="0.00" oninput="effDelay.value=this.value">
+        <div class="pair"><label>Duration of Effort (s)</label><input id="effDur" type="number" min="0" max="5" step="0.05" value="0.0"></div>
+        <input id="effDur_r" type="range" min="0" max="5" step="0.05" value="0.0" oninput="effDur.value=this.value">
+        <div class="pair"><label>Max Pmus (cmH<sub>2</sub>O)</label><input id="pmusMax" type="number" min="0" max="30" step="0.5" value="0"></div>
+        <input id="pmusMax_r" type="range" min="0" max="30" step="0.5" value="0" oninput="pmusMax.value=this.value">
       </div>
     </details>
 
@@ -201,21 +202,21 @@
     </div>
 
     <div id="waveWrap" class="card">
-      <div class="head"><h2>Waveforms</h2><span class="spacer"></span><small style="color:var(--muted)">Freeze to measure • <b>Snap</b> finds nearby peaks/valleys</small><button class="btn" id="snapBtn" title="Toggle snap to nearest extrema (hold Shift while moving)">Snap: Off</button></div>
+      <div class="head"><h2>Display</h2><span class="spacer"></span><small style="color:var(--muted)">Time series or loops • Freeze to measure • <b>Snap</b> finds nearby peaks/valleys</small><button class="btn" id="loopsBtn" title="Toggle loops view (PV & FV)">Loops: Off</button><button class="btn" id="snapBtn" title="Toggle snap to nearest extrema (hold Shift while moving)">Snap: Off</button></div>
       <div class="body">
         <div id="freezeBadge">Frozen</div>
-        <div class="wave">
-          <div class="yaxis">Pressure<br><span style="font-size:10px">(cmH<sub>2</sub>O)</span></div>
+        <div class="wave" id="rowP">
+          <div class="yaxis" id="yP">Pressure<br><span style="font-size:10px">(cmH<sub>2</sub>O)</span></div>
           <canvas id="pCanvas" height="120"></canvas>
           <div class="xlabels" id="pXLabels"></div>
         </div>
-        <div class="wave">
-          <div class="yaxis">Flow<br><span style="font-size:10px">(L/s)</span></div>
+        <div class="wave" id="rowF">
+          <div class="yaxis" id="yF">Flow<br><span style="font-size:10px">(L/s)</span></div>
           <canvas id="fCanvas" height="120"></canvas>
           <div class="xlabels" id="fXLabels"></div>
         </div>
-        <div class="wave">
-          <div class="yaxis">Volume<br><span style="font-size:10px">(mL)</span></div>
+        <div class="wave" id="rowV">
+          <div class="yaxis" id="yV">Volume<br><span style="font-size:10px">(mL)</span></div>
           <canvas id="vCanvas" height="120"></canvas>
           <div class="xlabels" id="vXLabels"></div>
         </div>
@@ -244,8 +245,8 @@
       <summary>Help</summary>
       <div class="card" style="margin-top:10px">
         <div class="body">
-          <p>This educational simulator approximates single-compartment lung mechanics. <em>VC‑CMV</em> uses set flow (square or ramp) to deliver set VT; pressure results from resistance and compliance. <em>PC‑CMV</em> uses set inspiratory pressure and time; flow and volume are results. <em>PC‑CSV</em> models pressure support with patient effort and cycles off when inspiratory flow decays to the chosen threshold. Tap <b>Freeze</b> to stop the scroller and move your pointer across the waveforms to sample values. Hold <b>Shift</b> or toggle <b>Snap</b> to jump to nearby peaks/valleys.</p>
-          <p>Use <b>Hold</b> to request a one‑shot inspiratory pause; the simulator captures plateau pressure during the hold. <b>Auto‑PEEP</b> is detected as the residual alveolar pressure above set PEEP at end‑expiration.</p>
+          <p>This educational simulator approximates single‑compartment lung mechanics. <em>VC‑CMV</em> uses set flow (square or ramp) to deliver set VT; pressure results from resistance and compliance. <em>PC‑CMV</em> uses set inspiratory pressure and time; flow and volume are results. <em>PC‑CSV</em> models pressure support with patient effort and cycles off when inspiratory flow decays to the chosen threshold. Tap <b>Freeze</b> to stop the scroller and move your pointer across the waveforms to sample values. Hold <b>Shift</b> or toggle <b>Snap</b> to jump to nearby peaks/valleys.</p>
+          <p>Use <b>Hold</b> to request a one‑shot inspiratory pause; the simulator captures plateau pressure during the hold. If <b>Pause Time (TPL) > 0</b>, plateau pressure is also captured each breath automatically. <b>Auto‑PEEP</b> is detected as the residual alveolar pressure above set PEEP at end‑expiration.</p>
         </div>
       </div>
     </details>
@@ -267,23 +268,23 @@ function lerp(a,b,t){ return a + (b-a)*t; }
 const state = {
   mode: 'VC-CMV',
   patient: 'Adult',
-  // Lung model
-  C: 0.06,   // L/cmH2O
+  // Lung model (defaults per request)
+  C: 0.05,   // L/cmH2O
   R: 10,     // cmH2O/L/s
   Leak: 0,   // L/min
-  // Effort
-  effF: 12,  // breaths/min
-  effDelay: 0.15,
-  effDur: 1.0,
-  pmusMax: 8,
-  // VC‑CMV
+  // Effort defaults per request
+  effF: 0,   // breaths/min
+  effDelay: 0.00,
+  effDur: 0.0,
+  pmusMax: 0,
+  // VC‑CMV defaults per request
   VC: {
-    F: 16,            // bpm
+    F: 12,            // bpm
     VT: 500,          // mL
     VMAX: 60,         // L/min (peak for Ramp; constant for Square)
     O2: 40,           // %
     PEEP: 5,          // cmH2O
-    TPL: 0.2,         // s
+    TPL: 0.0,         // s
     flowWave: 'Square'// 'Square' | 'Ramp'
   },
   // PC‑CMV
@@ -313,12 +314,13 @@ const state = {
     highFtot: 35,
     lowVe: 3,
     apnea: 20
-  }
+  },
+  loops: { on:false }
 };
 
 const defaultState = JSON.parse(JSON.stringify(state));
 
-// Patient presets
+// Patient presets (kept typical), only applied when user changes patient
 const presets = {
   'Adult':   { C: 0.06, R: 10 },
   'Pediatric': { C: 0.02, R: 20 },
@@ -423,12 +425,13 @@ function updateDialLabel(){
   $('#decrBtn').onclick = ()=> nudgeSelected(-1);
 })();
 
-// Mode/Patient/Theme/Reset/Help/Freeze/Snap
+// Mode/Patient/Theme/Reset/Help/Freeze/Snap/Loops
 $('#mode').addEventListener('change', (e)=>{ state.mode = e.target.value; renderControls(); });
 $('#patient').addEventListener('change', (e)=>{ state.patient = e.target.value; const p=presets[state.patient]; state.C=p.C; state.R=p.R; $('#C').value=p.C; $('#C_r').value=p.C; $('#R').value=p.R; $('#R_r').value=p.R; });
 $('#themeBtn').onclick = ()=> document.body.classList.toggle('light');
-$('#resetBtn').onclick = ()=>{ Object.assign(state, JSON.parse(JSON.stringify(defaultState))); applyPatient(); renderControls(); };
-$('#helpBtn').onclick = ()=> alert('Use the mode menu and buttons to select a control. Turn the rotary to adjust. Waveforms can be frozen to measure values with the cursor. Hold Shift or toggle Snap to jump to nearby peaks/valleys. Lung/Effort models on the left adjust physiology. Use Hold to capture plateau (PPL).');
+function syncInputs(){ $('#C').value=state.C; $('#C_r').value=state.C; $('#R').value=state.R; $('#R_r').value=state.R; $('#Leak').value=state.Leak; $('#Leak_r').value=state.Leak; $('#effF').value=state.effF; $('#effF_r').value=state.effF; $('#effDelay').value=state.effDelay; $('#effDelay_r').value=state.effDelay; $('#effDur').value=state.effDur; $('#effDur_r').value=state.effDur; $('#pmusMax').value=state.pmusMax; $('#pmusMax_r').value=state.pmusMax; }
+$('#resetBtn').onclick = ()=>{ Object.assign(state, JSON.parse(JSON.stringify(defaultState))); syncInputs(); renderControls(); };
+$('#helpBtn').onclick = ()=> alert('Use the mode menu and buttons to select a control. Turn the rotary to adjust. Waveforms can be frozen to measure values with the cursor. Hold Shift or toggle Snap to jump to nearby peaks/valleys. Lung/Effort models on the left adjust physiology. Use Hold or nonzero Pause Time to capture plateau (PPL).');
 $('#holdBtn').onclick = ()=> { hold.request = true; hold.duration = 0.5; };
 
 const freeze = { on:false, data:null, breaths:null, t:0, win:30, cursor:{active:false, t:0, snap:false, shift:false} };
@@ -438,10 +441,9 @@ $('#freezeBtn').onclick = ()=>{
   else{ freeze.data=null; freeze.breaths=null; $('#freezeBadge').classList.remove('on'); $('#freezeBtn').textContent='Freeze'; freeze.cursor.active=false; }
 };
 $('#snapBtn').onclick = ()=>{ freeze.cursor.snap = !freeze.cursor.snap; $('#snapBtn').textContent = 'Snap: ' + (freeze.cursor.snap? 'On':'Off'); };
+$('#loopsBtn').onclick = ()=>{ state.loops.on = !state.loops.on; $('#loopsBtn').textContent = 'Loops: ' + (state.loops.on?'On':'Off'); };
 window.addEventListener('keydown', (e)=>{ if(e.key==='Shift') freeze.cursor.shift=true; });
 window.addEventListener('keyup', (e)=>{ if(e.key==='Shift') freeze.cursor.shift=false; });
-
-function applyPatient(){ const p=presets[state.patient]; state.C=p.C; state.R=p.R; }
 
 ['C','R','Leak','effF','effDelay','effDur','pmusMax'].forEach(id=>{ $('#'+id).addEventListener('change', (e)=>{ state[id]= Number(e.target.value); }); });
 ['C_r','R_r','Leak_r','effF_r','effDelay_r','effDur_r','pmusMax_r'].forEach(id=>{ $('#'+id).addEventListener('input', (e)=>{ const base=id.replace(/_r$/,''); $('#'+base).value=e.target.value; state[base]=Number(e.target.value); }); });
@@ -455,7 +457,7 @@ function applyPatient(){ const p=presets[state.patient]; state.C=p.C; state.R=p.
 });
 
 renderControls();
-applyPatient();
+syncInputs();
 
 // ---------- Simulation Engine ----------
 const pCan = $('#pCanvas'), fCan=$('#fCanvas'), vCan=$('#vCanvas');
@@ -472,6 +474,7 @@ let sim = {
 };
 
 const hold = { request:false, duration:0.5, active:false, remaining:0 };
+let lastPplatSeen = null; // persists until overwritten
 
 function finalizePreviousBreath(){
   const prev = sim.breaths[sim.breaths.length-1];
@@ -485,7 +488,7 @@ function finalizePreviousBreath(){
 function startNewBreath(){
   finalizePreviousBreath();
   sim.phase='insp'; sim.timeInPhase=0; sim.cycleStart=sim.t; sim.csvPeakFlow=0; sim.pauseRemaining=0; hold.active=false; hold.remaining=0;
-  sim.breaths.push({ start: sim.t, expStart:null, cycleEnd:null, VT:0, VTE:0, Ti:0, Te:0, Ppeak:0, Pplat:0, autoPEEP:0 });
+  sim.breaths.push({ start: sim.t, expStart:null, cycleEnd:null, VT:0, VTE:0, Ti:0, Te:0, Ppeak:0, Pplat:lastPplatSeen, autoPEEP:0 });
 }
 
 function currentBreath(){ return sim.breaths[sim.breaths.length-1]; }
@@ -512,19 +515,21 @@ function simStep(){
     if(sim.phase==='insp' && sim.timeInPhase >= Ti_eff){
       sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti_eff; // pure inspiratory time
       if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; sim.pauseRemaining = hold.remaining; }
-      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.1)); }
+      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti_eff-0.05)); }
     }
     else if(sim.phase==='pause'){
       sim.Flow = 0; const Palv = (sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; sim.V = Math.max(0, sim.V - leakLps*sim.dt);
-      if(hold.active){ hold.remaining = Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
-      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt); if(sim.pauseRemaining<=0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart = sim.t; }
+      // Capture plateau either via Hold or non-zero TPL each breath
+      if(hold.active){ hold.remaining = Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; lastPplatSeen = sim.Paw; } }
+      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt);
+      if(sim.pauseRemaining<=0){ currentBreath().Pplat = sim.Paw; lastPplatSeen = sim.Paw; sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart = sim.t; }
     }
     else if(sim.phase==='insp'){
       let targetFlow = (M.flowWave==='Square') ? Vinsp_peak : Math.max(0, Vinsp_peak * (1 - sim.timeInPhase/(Ti_eff||1)));
       sim.Flow = targetFlow; const Palv = (sim.V/C) - Pmus; const Pres = sim.Flow * R; sim.Paw = PEEPset + Palv + Pres;
       sim.V = Math.max(0, sim.V + (sim.Flow - leakLps)*sim.dt); const b=currentBreath(); if(b){ b.Ppeak = Math.max(b.Ppeak||0, sim.Paw); b.VT = Math.max(b.VT||0, sim.V); }
     }
-    else {
+    else { // exp
       const tau = R*C; sim.V = Math.max(0, sim.V - ((sim.V/(tau||1)) + leakLps)*sim.dt); const Palv = (sim.V/C) - Pmus; sim.Flow = - ( (Palv) ) / R; sim.Paw = PEEPset + Palv + sim.Flow*R; if(currentBreath() && currentBreath().expStart!=null){ currentBreath().VTE += Math.max(0, -sim.Flow)*sim.dt; }
     }
 
@@ -536,12 +541,13 @@ function simStep(){
     if(sim.phase==='insp' && sim.timeInPhase >= Ti){
       sim.phase='pause'; sim.timeInPhase=0; currentBreath().Ti = Ti; // pure inspiratory time
       if(hold.request){ hold.request=false; hold.active=true; hold.remaining = hold.duration; sim.pauseRemaining = hold.remaining; }
-      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.1)); }
+      else { sim.pauseRemaining = clamp(M.TPL, 0, Math.max(0, Tcycle-Ti-0.05)); }
     }
     else if(sim.phase==='pause'){
       sim.Flow=0; const Palv=(sim.V/C) - Pmus; sim.Paw = PEEPset + Palv; sim.V=Math.max(0, sim.V - leakLps*sim.dt);
-      if(hold.active){ hold.remaining=Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; } }
-      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt); if(sim.pauseRemaining<=0){ sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
+      if(hold.active){ hold.remaining=Math.max(0, hold.remaining - sim.dt); if(hold.remaining<=0){ hold.active=false; currentBreath().Pplat = sim.Paw; lastPplatSeen = sim.Paw; } }
+      sim.pauseRemaining = Math.max(0, sim.pauseRemaining - sim.dt);
+      if(sim.pauseRemaining<=0){ currentBreath().Pplat = sim.Paw; lastPplatSeen = sim.Paw; sim.phase='exp'; sim.timeInPhase=0; currentBreath().expStart=sim.t; }
     }
     else if(sim.phase==='insp'){
       const tauRise = 0.1; const Pvent = PEEPset + M.PINSP * (1 - Math.exp(-sim.timeInPhase/(tauRise||1e-3)));
@@ -596,68 +602,138 @@ function nearestExtremum(series, key, t, halfWin=0.35){
   return cand;
 }
 
-// ---------- Drawing with axes, freeze & crosshair ----------
+// ---------- Drawing (time series & loops) + freeze & crosshair ----------
 function draw(){
   [pCan,fCan,vCan].forEach(cv=>{ const r=devicePixelRatio||1; cv.width=cv.clientWidth*r; cv.height=cv.clientHeight*r; const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0); });
   const win = freeze.on ? freeze.win : Math.max(10, Number($('#win').value));
   const series = getSeries(); const breaths = getBreaths();
   const tNow = freeze.on ? freeze.t : sim.t; const tmin = tNow - win; const data = series.filter(d=> d.t>=tmin);
   const PEEPset = (state.mode==='VC-CMV'? state.VC.PEEP : state.mode==='PC-CMV'? state.PC.PEEP : state.PSV.PEEP);
-  const pMax = Math.max( (PEEPset)+30, ...data.map(d=>d.Paw+2), 10 );
-  const fMax = Math.max( 1, ...data.map(d=>Math.abs(d.Flow)) ) * 1.2;
-  const vMax = Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2;
 
-  function xMap(t, ctx){ const w=ctx.canvas.clientWidth; return ( (t - tmin) / (win||1) ) * w; }
-  function yMap(v, vmin, vmax, ctx){ const h=ctx.canvas.clientHeight; return h - ((v - vmin) / Math.max(1e-6,(vmax - vmin))) * h; }
-
-  function plot(ctx, key, vmin, vmax, color, xlabEl){
-    const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight;
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
-    const yTicks=4; for(let i=0;i<=yTicks;i++){ const y= (i/yTicks)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); const val = lerp(vmax,vmin,i/yTicks); ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:0), 4, y-2); }
-    const step = Math.max(1, Math.round(win/6));
-    for(let t=Math.ceil(tmin); t<=tNow; t+=step){ const x=xMap(t,ctx); ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-    if(xlabEl){ xlabEl.innerHTML=''; const n=6; for(let i=0;i<=n;i++){ const tt=tmin + (i/n)*win; const div=document.createElement('div'); div.textContent=fmt(tt - tmin,0)+'s'; xlabEl.appendChild(div);} }
-
-    if(key==='Flow'){ const y0=yMap(0, -fMax, fMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
-    if(key==='V'){ const y0=yMap(0, 0, vMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
-
-    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
-    data.forEach((d,i)=>{ const x = xMap(d.t, ctx); const y = yMap(d[key], vmin, vmax, ctx); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }); ctx.stroke();
-
-    if(key==='Paw'){ const yPEEP = yMap(PEEPset, vmin, vmax, ctx); ctx.strokeStyle='rgba(124,156,255,.6)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,yPEEP); ctx.lineTo(W,yPEEP); ctx.stroke(); ctx.setLineDash([]); }
-
-    ctx.strokeStyle='rgba(255,255,255,.25)';
-    for(const b of breaths){ if(b.start>=tmin && b.start<=tNow){ const x=xMap(b.start,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); } if(b.cycleEnd&&b.cycleEnd>=tmin && b.cycleEnd<=tNow){ const x=xMap(b.cycleEnd,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); } }
-
-    // Crosshair & cursor overlays when frozen
-    if(freeze.on && freeze.cursor.active){
-      let tC = freeze.cursor.t;
-      if(freeze.cursor.snap || freeze.cursor.shift) tC = nearestExtremum(series, key, tC, 0.35);
-      const x = xMap(tC, ctx);
-      const val = sampleAt(series, tC, key); const y = yMap(val, vmin, vmax, ctx);
-      // vertical
-      ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.setLineDash([]);
-      // horizontal
-      ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.setLineDash([2,4]); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); ctx.setLineDash([]);
-      // value tag
-      ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(Math.min(Math.max(4,x+6), W-120), 6, 116, 18); ctx.fillStyle='white'; ctx.font='12px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:1) + (key==='Paw'?' cmH2O': key==='Flow'?' L/s':' mL'), Math.min(Math.max(8,x+10), W-116), 19);
-    }
+  // Toggle labels based on mode
+  if(state.loops.on){
+    $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">Paw vs V</span>';
+    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">Flow vs V</span>';
+    $('#yV').innerHTML = '';
+    $('#rowV').classList.add('hidden');
+    $('#pXLabels').classList.add('hidden');
+    $('#fXLabels').classList.add('hidden');
+  } else {
+    $('#yP').innerHTML = 'Pressure<br><span style="font-size:10px">(cmH<sub>2</sub>O)</span>';
+    $('#yF').innerHTML = 'Flow<br><span style="font-size:10px">(L/s)</span>';
+    $('#yV').innerHTML = 'Volume<br><span style="font-size:10px">(mL)</span>';
+    $('#rowV').classList.remove('hidden');
+    $('#pXLabels').classList.remove('hidden');
+    $('#fXLabels').classList.remove('hidden');
   }
 
-  plot(ctxP, 'Paw', 0, pMax, getComputedStyle(document.documentElement).getPropertyValue('--brand'), $('#pXLabels'));
-  plot(ctxF, 'Flow', -fMax, fMax, getComputedStyle(document.documentElement).getPropertyValue('--brand2'), $('#fXLabels'));
-  plot(ctxV, 'V', 0, vMax, getComputedStyle(document.documentElement).getPropertyValue('--warn'), $('#vXLabels'));
+  if(!state.loops.on){
+    const pMax = Math.max( (PEEPset)+30, ...data.map(d=>d.Paw+2), 10 );
+    const fMax = Math.max( 1, ...data.map(d=>Math.abs(d.Flow)) ) * 1.2;
+    const vMax = Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2;
+
+    function xMap(t, ctx){ const w=ctx.canvas.clientWidth; return ( (t - tmin) / (win||1) ) * w; }
+    function yMap(v, vmin, vmax, ctx){ const h=ctx.canvas.clientHeight; return h - ((v - vmin) / Math.max(1e-6,(vmax - vmin))) * h; }
+
+    function plot(ctx, key, vmin, vmax, color, xlabEl){
+      const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
+      const yTicks=4; for(let i=0;i<=yTicks;i++){ const y= (i/yTicks)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); const val = lerp(vmax,vmin,i/yTicks); ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:0), 4, y-2); }
+      const step = Math.max(1, Math.round(win/6));
+      for(let t=Math.ceil(tmin); t<=tNow; t+=step){ const x=xMap(t,ctx); ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+      if(xlabEl){ xlabEl.innerHTML=''; const n=6; for(let i=0;i<=n;i++){ const tt=tmin + (i/n)*win; const div=document.createElement('div'); div.textContent=fmt(tt - tmin,0)+'s'; xlabEl.appendChild(div);} }
+
+      if(key==='Flow'){ const y0=yMap(0, -fMax, fMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
+      if(key==='V'){ const y0=yMap(0, 0, vMax, ctx); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.stroke(); }
+
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+      data.forEach((d,i)=>{ const x = xMap(d.t, ctx); const y = yMap(d[key], vmin, vmax, ctx); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }); ctx.stroke();
+
+      if(key==='Paw'){ const yPEEP = yMap(PEEPset, vmin, vmax, ctx); ctx.strokeStyle='rgba(124,156,255,.6)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,yPEEP); ctx.lineTo(W,yPEEP); ctx.stroke(); ctx.setLineDash([]); }
+
+      ctx.strokeStyle='rgba(255,255,255,.25)';
+      for(const b of breaths){ if(b.start>=tmin && b.start<=tNow){ const x=xMap(b.start,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); } if(b.cycleEnd&&b.cycleEnd>=tmin && b.cycleEnd<=tNow){ const x=xMap(b.cycleEnd,ctx); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); } }
+
+      // Crosshair & cursor overlays when frozen
+      if(freeze.on && freeze.cursor.active){
+        let tC = freeze.cursor.t;
+        if(freeze.cursor.snap || freeze.cursor.shift) tC = nearestExtremum(series, key, tC, 0.35);
+        const x = xMap(tC, ctx);
+        const val = sampleAt(series, tC, key); const y = yMap(val, vmin, vmax, ctx);
+        // vertical
+        ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.setLineDash([]);
+        // horizontal
+        ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.setLineDash([2,4]); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); ctx.setLineDash([]);
+        // value tag
+        ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(Math.min(Math.max(4,x+6), W-120), 6, 116, 18); ctx.fillStyle='white'; ctx.font='12px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:1) + (key==='Paw'?' cmH2O': key==='Flow'?' L/s':' mL'), Math.min(Math.max(8,x+10), W-116), 19);
+      }
+    }
+
+    const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand');
+    const brand2 = getComputedStyle(document.documentElement).getPropertyValue('--brand2');
+    const warn = getComputedStyle(document.documentElement).getPropertyValue('--warn');
+    plot(ctxP, 'Paw', 0, Math.max((PEEPset)+30, ...data.map(d=>d.Paw+2), 10 ), brand, $('#pXLabels'));
+    plot(ctxF, 'Flow', -Math.max( 1, ...data.map(d=>Math.abs(d.Flow)) ) * 1.2, Math.max( 1, ...data.map(d=>Math.abs(d.Flow)) ) * 1.2, brand2, $('#fXLabels'));
+    plot(ctxV, 'V', 0, Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2, warn, $('#vXLabels'));
+
+  } else {
+    // Loops view
+    function clear(ctx){ const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; ctx.clearRect(0,0,W,H); ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H); return {W,H}; }
+    function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
+      const {W,H} = {W:ctx.canvas.clientWidth,H:ctx.canvas.clientHeight};
+      ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif';
+      for(const xt of xTicks){ ctx.fillText(xt.label, xt.x, H-4); }
+      for(const yt of yTicks){ ctx.fillText(yt.label, 4, yt.y-2); }
+      ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
+    }
+
+    // Get last completed breath segment
+    const last = getBreaths().slice(-1)[0];
+    let seg = null;
+    if(last && last.start!=null){ const t1 = last.cycleEnd ?? tNow; seg = getSeries().filter(d=> d.t>=last.start && d.t<=t1); }
+    if(!seg || seg.length<4){ seg = data; }
+
+    // Ranges
+    const PawMax = Math.max(10, ...seg.map(d=>d.Paw));
+    const Vmax = Math.max(100, ...seg.map(d=>Math.max(0,d.V)));
+    const Fabs = Math.max(1, ...seg.map(d=>Math.abs(d.Flow)));
+
+    // P–V loop (Paw vs V)
+    (function(){ const {W,H} = clear(ctxP); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
+      function xMap(v){ return xMin + (Math.max(0,v)/Vmax) * (xMax - xMin); }
+      function yMap(p){ return yMax - (p/PawMax) * (yMax - yMin); }
+      ctxP.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand'); ctxP.lineWidth=2; ctxP.beginPath();
+      seg.forEach((d,i)=>{ const x=xMap(d.V); const y=yMap(d.Paw); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
+      // Axes & ticks
+      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
+      const yTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({y:yMap(p),label:fmt(p,0)}));
+      drawAxes(ctxP, xMap(0), yMap(0), xTicks, yTicks, 'mL', 'cmH2O'); })();
+
+    // F–V loop (Flow vs V)
+    (function(){ const {W,H} = clear(ctxF); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16; const y0 = (yMin+yMax)/2;
+      function xMap(v){ return xMin + (Math.max(0,v)/Vmax) * (xMax - xMin); }
+      function yMap(f){ return yMax - ((f + Fabs)/(2*Fabs)) * (yMax - yMin); }
+      ctxF.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand2'); ctxF.lineWidth=2; ctxF.beginPath();
+      seg.forEach((d,i)=>{ const x=xMap(d.V); const y=yMap(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
+      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
+      const yTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({y:yMap(f),label:fmt(f,1)}));
+      drawAxes(ctxF, xMap(0), yMap(0), xTicks, yTicks, 'mL', 'L/s'); })();
+
+    // bottom canvas cleared
+    (function(){ const {W,H} = clear(ctxV); ctxV.fillStyle='rgba(255,255,255,.25)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active (P–V top, F–V middle)', 8, 18); })();
+  }
 }
 
-// Canvas mouse interactions for cursor measurement
+// Canvas mouse interactions for cursor measurement (time series only)
 [pCan,fCan,vCan].forEach(cv=>{
-  cv.addEventListener('pointermove', (e)=>{ if(!freeze.on) return; const rect=cv.getBoundingClientRect(); const x=(e.clientX-rect.left); const frac = clamp(x/rect.width, 0, 1); const win = freeze.win; const tNow = freeze.t; freeze.cursor.t = (tNow - win) + frac*win; freeze.cursor.active=true; });
+  cv.addEventListener('pointermove', (e)=>{ if(!freeze.on || state.loops.on) return; const rect=cv.getBoundingClientRect(); const x=(e.clientX-rect.left); const frac = clamp(x/rect.width, 0, 1); const win = freeze.win; const tNow = freeze.t; freeze.cursor.t = (tNow - win) + frac*win; freeze.cursor.active=true; });
   cv.addEventListener('pointerleave', ()=>{ if(!freeze.on) return; freeze.cursor.active=false; });
 });
 
-// ---------- Metrics & I:E (breath-measured incl. pause) + Alarms ----------
+// ---------- Metrics & I:E (breath‑measured incl. pause) + Alarms ----------
 function computeStats(){
   const windowSec = 60; const series = getSeries(); const breaths = getBreaths();
   const tNow = freeze.on ? freeze.t : sim.t; const t0 = tNow - windowSec;
@@ -666,7 +742,7 @@ function computeStats(){
   const last = completed[completed.length-1];
 
   const VTE = last? (last.VTE*1000) : 0; // mL
-  const Ppeak = last? last.Ppeak : 0; const Pplat = last? last.Pplat : 0; const autoPEEP = last? last.autoPEEP : 0;
+  const Ppeak = last? last.Ppeak : 0; const PplatCurrent = (last && last.Pplat!=null)? last.Pplat : lastPplatSeen; const autoPEEP = last? last.autoPEEP : 0;
 
   let Pmean = 0; if (last){ const seg = series.filter(d=> d.t>=last.start && d.t<=last.cycleEnd); if(seg.length>1){ const dt = (seg[seg.length-1].t-seg[0].t)/(seg.length-1); Pmean = seg.reduce((s,d)=>s+d.Paw*dt,0)/( (seg.length-1)*dt ); } }
 
@@ -681,16 +757,20 @@ function computeStats(){
     Pause = Math.max(0, TiInclPause - TiPure);
     Ti = TiInclPause;
     Te = Math.max(0.05, Total - Ti);
-    const g=gcdApprox(Ti,Te); IEratio = `${fmt(Ti/g,1)}:${fmt(Te/g,1)}`;
+    // Requested formatting: normally I=1 part; if inverse (Ti>Te), set E=1 and I>1
+    if(Ti>0 && Te>0){
+      if(Ti <= Te){ IEratio = `1:${fmt(Te/Ti,1)}`; }
+      else { IEratio = `${fmt(Ti/Te,1)}:1`; }
+    }
   }
   $('#ieVal').textContent = IEratio;
 
-  // I:E average over last 5 completed breaths
+  // I:E average over last 5 completed breaths (format with same rule)
   const recent = completed.slice(-5);
   let IEavg = '—';
   if(recent.length){
-    const sums = recent.reduce((acc,b)=>{ if(b.cycleEnd && b.expStart){ const TiInc = Math.max(0.05, b.expStart - b.start); const total = Math.max(0.05, b.cycleEnd - b.start); acc.Ti+=TiInc; acc.Te+=Math.max(0.05,total-TiInc);} return acc; }, {Ti:0,Te:0});
-    if(sums.Ti>0 && sums.Te>0){ const g=gcdApprox(sums.Ti/recent.length, sums.Te/recent.length); IEavg = `${fmt((sums.Ti/recent.length)/g,1)}:${fmt((sums.Te/recent.length)/g,1)}`; }
+    let sumTi=0, sumTe=0, n=0; for(const b of recent){ if(b.cycleEnd && b.expStart){ const TT = Math.max(0.05, b.cycleEnd - b.start); const TI = Math.max(0.05, b.expStart - b.start); sumTi+=TI; sumTe+=Math.max(0.05, TT-TI); n++; } }
+    if(n>0){ const mTi=sumTi/n, mTe=sumTe/n; IEavg = (mTi <= mTe) ? `1:${fmt(mTe/mTi,1)}` : `${fmt(mTi/mTe,1)}:1`; }
   }
 
   const ieList = [
@@ -706,7 +786,7 @@ function computeStats(){
 
   const list = [
     {k:'Peak Airway Pressure', abb:'(PPEAK)', v: fmt(Ppeak,1), u:'cmH2O'},
-    {k:'Plateau Pressure', abb:'(PPL)', v: fmt(Pplat,1), u:'cmH2O'},
+    {k:'Plateau Pressure', abb:'(PPL)', v: (PplatCurrent!=null? fmt(PplatCurrent,1):'—'), u:'cmH2O'},
     {k:'Mean Airway Pressure', abb:'(PMEAN)', v: fmt(Pmean,1), u:'cmH2O'},
     {k:'Exhaled Tidal Volume', abb:'(VTE)', v: fmt(VTE,0), u:'mL'},
     {k:'Minute Ventilation', abb:'(VE TOT)', v: fmt(VE,1), u:'L/min'},
@@ -720,14 +800,12 @@ function computeStats(){
   updateAlarms({ Ppeak, VTE, FTOT, VE, tNow, last });
 }
 
-function gcdApprox(a,b){ const scale=10; const x=Math.round(a*scale), y=Math.round(b*scale); function gcd(m,n){ return n?gcd(n,m%n):m; } const g=gcd(x,y)||1; return (1/scale)*g; }
-
 // ---------- Alarms ----------
 const alarmUI = { bar: $('#alarmBar'), text: $('#alarmText'), silenceBtn: $('#silenceBtn') };
 const beeper = { ctx:null, gain:null, lastBeep:0, silencedUntil:0 };
 
 function ensureAudio(){ if(beeper.ctx) return; const AudioCtx = window.AudioContext || window.webkitAudioContext; if(!AudioCtx) return; beeper.ctx = new AudioCtx(); beeper.gain = beeper.ctx.createGain(); beeper.gain.gain.value = 0.0; beeper.gain.connect(beeper.ctx.destination); }
-function beepOnce(){ if(!beeper.ctx) return; const nowa = beeper.ctx.currentTime; const o = beeper.ctx.createOscillator(); o.type='square'; o.frequency.value=880; o.connect(beeper.gain); beeper.gain.gain.setValueAtTime(0.0, nowa); beeper.gain.gain.linearRampToValueAtTime(0.2, nowa+0.01); beeper.gain.gain.linearRampToValueAtTime(0.0, nowa+0.18); o.start(nowa); o.stop(nowa+0.2); }
+function beepOnce(){ if(!beeper.ctx) return; const nowa = beeper.ctx.currentTime; const o = beeper.ctx.createOscillator(); o.type='square'; o.frequency.value=880; o.connect(beeper.gain); beeper.gain.gain.setValueAtTime(0.0, nowa); beeper.gain.gain.linearRampToValueAtTime(0.18, nowa+0.01); beeper.gain.gain.linearRampToValueAtTime(0.0, nowa+0.22); o.start(nowa); o.stop(nowa+0.24); }
 
 document.addEventListener('pointerdown', ()=>{ try{ ensureAudio(); beeper?.ctx?.resume(); }catch{} }, {once:true});
 alarmUI.silenceBtn.addEventListener('click', ()=>{ beeper.silencedUntil = now() + 60; updateAlarmBar([], 'silenced'); });
@@ -759,7 +837,7 @@ function updateAlarms(m){
   if(isActive){
     const silenced = now() < beeper.silencedUntil;
     updateAlarmBar(names, silenced? 'silenced':'active');
-    if(!silenced){ ensureAudio(); try{ beeper?.ctx?.resume(); }catch{}; if(now() - beeper.lastBeep > 1.2){ beepOnce(); beeper.lastBeep = now(); } }
+    if(!silenced){ ensureAudio(); try{ beeper?.ctx?.resume(); }catch{}; if(now() - beeper.lastBeep > 1.0){ beepOnce(); beeper.lastBeep = now(); } }
   } else {
     updateAlarmBar([], 'ok');
   }
