@@ -62,7 +62,7 @@
   .btnGrid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:8px }
   .paramBtn{ border:1px solid rgba(255,255,255,.12); background:var(--panel2); border-radius:12px; padding:10px; text-align:left; cursor:pointer; display:grid; gap:4px; color:var(--ink) }
   .paramBtn .lbl{ font-size:12px; color:var(--muted) }
-  .paramBtn .val{ font-weight:900; font-size:20px; color:var(--brand); text-shadow:0 0 8px rgba(120,168,255,.25) }
+  .paramBtn .val{ font-weight:900; font-size:20px; color:#eaf2ff; text-shadow:0 0 12px rgba(120,168,255,.35) }
   .paramBtn.active{ outline: 2px solid var(--brand); border-color: transparent; }
   .dial{ background:var(--panel2); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:10px; display:grid; gap:10px; justify-items:center }
   .knob{ width:120px; height:120px; border-radius:999px; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.15), rgba(255,255,255,.02)); display:grid; place-items:center; position:relative; box-shadow: inset 0 6px 18px rgba(0,0,0,.35); }
@@ -130,7 +130,7 @@
 </header>
 
 <main>
-  <div class="fullRow" id="alarmBar" class="ok">
+  <div id="alarmBar" class="fullRow ok">
     <span id="alarmText"></span>
     <span class="spacer"></span>
     <button class="btn" id="silenceBtn" title="Silence alarm for 60 s">Silence</button>
@@ -320,7 +320,7 @@ const state = {
 
 const defaultState = JSON.parse(JSON.stringify(state));
 
-// Patient presets (kept typical), only applied when user changes patient
+// Patient presets
 const presets = {
   'Adult':   { C: 0.06, R: 10 },
   'Pediatric': { C: 0.02, R: 20 },
@@ -602,6 +602,47 @@ function nearestExtremum(series, key, t, halfWin=0.35){
   return cand;
 }
 
+// ---------- Loop helpers: axes, arrows, inflections (PV) ----------
+function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
+  const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight;
+  ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif';
+  for(const xt of xTicks){ ctx.fillText(xt.label, xt.x, H-4); }
+  for(const yt of yTicks){ ctx.fillText(yt.label, 4, yt.y-2); }
+  ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
+}
+function drawArrow(ctx,x0,y0,x1,y1,color='rgba(255,255,255,.8)'){
+  const ang = Math.atan2(y1-y0,x1-x0);
+  const len = 8;
+  ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1,y1);
+  ctx.lineTo(x1 - len*Math.cos(ang - Math.PI/6), y1 - len*Math.sin(ang - Math.PI/6));
+  ctx.lineTo(x1 - len*Math.cos(ang + Math.PI/6), y1 - len*Math.sin(ang + Math.PI/6));
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+}
+function downsample(points, every){ const out=[]; for(let i=every;i<points.length;i+=every){ out.push([points[i- every], points[i]]); } return out; }
+function findInflectionsPV(seg){
+  if(!seg || seg.length<6) return {insp:null, exp:null};
+  const breaths = getBreaths(); const last = breaths[breaths.length-1];
+  const te = last?.expStart ?? seg[0].t + (seg[seg.length-1].t - seg[0].t)/2;
+  const insp = seg.filter(d=> d.t<=te);
+  const exp  = seg.filter(d=> d.t>=te);
+  function pick(segment){
+    if(segment.length<6) return null;
+    const P = segment.map(d=> d.Paw); const V = segment.map(d=> Math.max(0,d.V));
+    const n = P.length; const eps = 1e-6;
+    const Ps=[], Vs=[]; for(let i=0;i<n;i++){ const i0=Math.max(0,i-1), i1=Math.min(n-1,i+1); Ps.push((P[i0]+P[i]+P[i1])/3); Vs.push((V[i0]+V[i]+V[i1])/3); }
+    const d1=[]; for(let i=1;i<n-1;i++){ const dP=(Ps[i+1]-Ps[i-1]); const dV=(Vs[i+1]-Vs[i-1]); d1.push(dV/((dP===0)?eps:dP)); }
+    const d2=[]; for(let i=1;i<d1.length-1;i++){ const dP=(Ps[i+2]-Ps[i]); const dd=(d1[i]-d1[i-1]); d2.push(dd/((dP===0)?eps:dP)); }
+    if(d2.length<3) return null;
+    let iMax=0,iMin=0; for(let i=1;i<d2.length;i++){ if(d2[i]>d2[iMax]) iMax=i; if(d2[i]<d2[iMin]) iMin=i; }
+    const idxLIP = iMax+2; const idxUIP = iMin+2;
+    const thr = 1e-4; if(Math.abs(d2[iMax])<thr && Math.abs(d2[iMin])<thr) return null;
+    return { idxLIP, idxUIP };
+  }
+  return { insp: pick(insp), exp: pick(exp) };
+}
+
 // ---------- Drawing (time series & loops) + freeze & crosshair ----------
 function draw(){
   [pCan,fCan,vCan].forEach(cv=>{ const r=devicePixelRatio||1; cv.width=cv.clientWidth*r; cv.height=cv.clientHeight*r; const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0); });
@@ -613,7 +654,7 @@ function draw(){
   // Toggle labels based on mode
   if(state.loops.on){
     $('#yP').innerHTML = 'P–V Loop<br><span style="font-size:10px">V (y) vs Paw (x)</span>';
-    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">Flow vs V</span>';
+    $('#yF').innerHTML = 'F–V Loop<br><span style="font-size:10px">V (y) vs Flow (x)</span>';
     $('#yV').innerHTML = '';
     $('#rowV').classList.add('hidden');
     $('#pXLabels').classList.add('hidden');
@@ -667,7 +708,15 @@ function draw(){
         // horizontal
         ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.setLineDash([2,4]); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); ctx.setLineDash([]);
         // value tag
-        ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(Math.min(Math.max(4,x+6), W-120), 6, 116, 18); ctx.fillStyle='white'; ctx.font='12px ui-sans-serif'; ctx.fillText(fmt(val, key==='V'?0:1) + (key==='Paw'?' cmH2O': key==='Flow'?' L/s':' mL'), Math.min(Math.max(8,x+10), W-116), 19);
+        // value tag (auto-size to avoid clipping)
+        ctx.font='12px ui-sans-serif';
+        const tag = fmt(val, key==='V'?0:1) + (key==='Paw'?' cmH2O': key==='Flow'?' L/s':' mL');
+        const tw = Math.min(W-20, ctx.measureText(tag).width + 12);
+        const bx = clamp(x+6, 4, W - tw - 4);
+        ctx.fillStyle='rgba(0,0,0,.45)';
+        ctx.fillRect(bx, 6, tw, 18);
+        ctx.fillStyle='white';
+        ctx.fillText(tag, bx+6, 19);
       }
     }
 
@@ -679,18 +728,10 @@ function draw(){
     plot(ctxV, 'V', 0, Math.max( 100, ...data.map(d=>Math.abs(d.V)) ) * 1.2, warn, $('#vXLabels'));
 
   } else {
-    // Loops view
+    // Loops view (Volume on Y axis)
     function clear(ctx){ const W=ctx.canvas.clientWidth, H=ctx.canvas.clientHeight; ctx.clearRect(0,0,W,H); ctx.fillStyle='rgba(255,255,255,.03)'; ctx.fillRect(0,0,W,H); return {W,H}; }
-    function drawAxes(ctx, x0, y0, xTicks, yTicks, xLabel, yLabel){
-      const {W,H} = {W:ctx.canvas.clientWidth,H:ctx.canvas.clientHeight};
-      ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(W,y0); ctx.moveTo(x0,0); ctx.lineTo(x0,H); ctx.stroke();
-      ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px ui-sans-serif';
-      for(const xt of xTicks){ ctx.fillText(xt.label, xt.x, H-4); }
-      for(const yt of yTicks){ ctx.fillText(yt.label, 4, yt.y-2); }
-      ctx.fillText(xLabel, W-60, H-18); ctx.fillText(yLabel, 6, 14);
-    }
 
-    // Get last completed breath segment
+    // Use last completed breath if present
     const last = getBreaths().slice(-1)[0];
     let seg = null;
     if(last && last.start!=null){ const t1 = last.cycleEnd ?? tNow; seg = getSeries().filter(d=> d.t>=last.start && d.t<=t1); }
@@ -701,29 +742,42 @@ function draw(){
     const Vmax = Math.max(100, ...seg.map(d=>Math.max(0,d.V)));
     const Fabs = Math.max(1, ...seg.map(d=>Math.abs(d.Flow)));
 
-    // P–V loop (V vs Paw) — Pressure on X, Volume on Y
+    // ---------- P–V loop (x=Paw, y=V) ----------
     (function(){ const {W,H} = clear(ctxP); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
       function xMap(p){ return xMin + (p/Math.max(1e-6,PawMax)) * (xMax - xMin); }
       function yMap(v){ return yMax - (Math.max(0,v)/Math.max(1e-6,Vmax)) * (yMax - yMin); }
+      // path
       ctxP.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand'); ctxP.lineWidth=2; ctxP.beginPath();
       seg.forEach((d,i)=>{ const x=xMap(d.Paw); const y=yMap(d.V); if(i===0) ctxP.moveTo(x,y); else ctxP.lineTo(x,y); }); ctxP.stroke();
-      // Axes & ticks
+      // axes
       const xTicks=[0, PawMax*0.25, PawMax*0.5, PawMax*0.75, PawMax].map(p=>({x:xMap(p)-6,label:fmt(p,0)}));
       const yTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({y:yMap(v),label:(v|0)}));
-      drawAxes(ctxP, xMap(0), yMap(0), xTicks, yTicks, 'cmH2O', 'mL'); })();
+      drawAxes(ctxP, xMap(0), yMap(0), xTicks, yTicks, 'cmH2O', 'mL');
+      // arrows
+      const pts = seg.map(d=>({x:xMap(d.Paw), y:yMap(d.V)}));
+      downsample(pts, Math.max(5, Math.floor(pts.length/12))).forEach(([a,b])=> drawArrow(ctxP,a.x,a.y,b.x,b.y));
+      // inflection markers
+      const infl = findInflectionsPV(seg);
+      function dot(x,y,txt,color){ ctxP.fillStyle=color; ctxP.beginPath(); ctxP.arc(x,y,4,0,Math.PI*2); ctxP.fill(); ctxP.fillStyle='white'; ctxP.font='11px ui-sans-serif'; ctxP.fillText(txt, x+6, y-6); }
+      if(infl?.insp){ const p1=seg[infl.insp.idxLIP], p2=seg[infl.insp.idxUIP]; if(p1){ dot(xMap(p1.Paw), yMap(p1.V), 'LIPᵢ','rgba(120,168,255,.9)'); } if(p2){ dot(xMap(p2.Paw), yMap(p2.V), 'UIPᵢ','rgba(120,168,255,.9)'); } }
+      if(infl?.exp){ const p1=seg[infl.exp.idxLIP], p2=seg[infl.exp.idxUIP]; if(p1){ dot(xMap(p1.Paw), yMap(p1.V), 'LIPₑ','rgba(246,161,92,.95)'); } if(p2){ dot(xMap(p2.Paw), yMap(p2.V), 'UIPₑ','rgba(246,161,92,.95)'); } }
+    })();
 
-    // F–V loop (Flow vs V) — unchanged
-    (function(){ const {W,H} = clear(ctxF); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16; const y0 = (yMin+yMax)/2;
-      function xMap(v){ return xMin + (Math.max(0,v)/Vmax) * (xMax - xMin); }
-      function yMap(f){ return yMax - ((f + Fabs)/(2*Fabs)) * (yMax - yMin); }
+    // ---------- F–V loop (x=Flow, y=V) ----------
+    (function(){ const {W,H} = clear(ctxF); const pad=28; const xMin=pad, xMax=W-10, yMin=10, yMax=H-16;
+      function xMap(f){ return xMin + ((f + Fabs)/(2*Fabs)) * (xMax - xMin); }
+      function yMap(v){ return yMax - (Math.max(0,v)/Math.max(1e-6,Vmax)) * (yMax - yMin); }
       ctxF.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand2'); ctxF.lineWidth=2; ctxF.beginPath();
-      seg.forEach((d,i)=>{ const x=xMap(d.V); const y=yMap(d.Flow); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
-      const xTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({x:xMap(v)-6,label:(v|0)}));
-      const yTicks=[-Fabs, -Fabs*0.5, 0, Fabs*0.5, Fabs].map(f=>({y:yMap(f),label:fmt(f,1)}));
-      drawAxes(ctxF, xMap(0), yMap(0), xTicks, yTicks, 'mL', 'L/s'); })();
+      seg.forEach((d,i)=>{ const x=xMap(d.Flow); const y=yMap(d.V); if(i===0) ctxF.moveTo(x,y); else ctxF.lineTo(x,y); }); ctxF.stroke();
+      const xTicks=[-Fabs,-Fabs*0.5,0,Fabs*0.5,Fabs].map(f=>({x:xMap(f)-6,label:fmt(f,1)}));
+      const yTicks=[0, Vmax*0.25, Vmax*0.5, Vmax*0.75, Vmax].map(v=>({y:yMap(v),label:(v|0)}));
+      drawAxes(ctxF, xMap(0), yMap(0), xTicks, yTicks, 'L/s', 'mL');
+      const pts = seg.map(d=>({x:xMap(d.Flow), y:yMap(d.V)}));
+      downsample(pts, Math.max(5, Math.floor(pts.length/12))).forEach(([a,b])=> drawArrow(ctxF,a.x,a.y,b.x,b.y,'rgba(255,255,255,.8)'));
+    })();
 
-    // bottom canvas cleared
-    (function(){ const {W,H} = clear(ctxV); ctxV.fillStyle='rgba(255,255,255,.25)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active (P–V top, F–V middle)', 8, 18); })();
+    // bottom canvas cleared/caption
+    (function(){ const {W,H} = {W:ctxV.canvas.clientWidth,H:ctxV.canvas.clientHeight}; ctxV.clearRect(0,0,W,H); ctxV.fillStyle='rgba(255,255,255,.25)'; ctxV.font='12px ui-sans-serif'; ctxV.fillText('Loops view active (P–V top, F–V middle)', 8, 18); })();
   }
 }
 
@@ -733,7 +787,7 @@ function draw(){
   cv.addEventListener('pointerleave', ()=>{ if(!freeze.on) return; freeze.cursor.active=false; });
 });
 
-// ---------- Metrics & I:E (breath‑measured incl. pause) + Alarms ----------
+// ---------- Metrics & I:E + Alarms ----------
 function computeStats(){
   const windowSec = 60; const series = getSeries(); const breaths = getBreaths();
   const tNow = freeze.on ? freeze.t : sim.t; const t0 = tNow - windowSec;
@@ -757,7 +811,7 @@ function computeStats(){
     Pause = Math.max(0, TiInclPause - TiPure);
     Ti = TiInclPause;
     Te = Math.max(0.05, Total - Ti);
-    // Requested formatting: normally I=1 part; if inverse (Ti>Te), set E=1 and I>1
+    // Formatting: normally I=1; if inverse (Ti>Te) set E=1 and I>1
     if(Ti>0 && Te>0){
       if(Ti <= Te){ IEratio = `1:${fmt(Te/Ti,1)}`; }
       else { IEratio = `${fmt(Ti/Te,1)}:1`; }
@@ -765,7 +819,7 @@ function computeStats(){
   }
   $('#ieVal').textContent = IEratio;
 
-  // I:E average over last 5 completed breaths (format with same rule)
+  // I:E average over last 5 completed breaths
   const recent = completed.slice(-5);
   let IEavg = '—';
   if(recent.length){
